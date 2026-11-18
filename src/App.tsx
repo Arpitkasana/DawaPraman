@@ -38,7 +38,7 @@ export default function App() {
         <label className="text-sm font-medium">Batch No</label>
         <input
           value={batchNo}
-          onChange={(e) => setBatchNo(e.target.value)}
+          onChange={(e) => setBatchNo(e.target.value.toUpperCase)}
           placeholder="e.g. B12345"
           className="w-full border rounded-lg p-3 mt-1 mb-3 outline-none focus:border-emerald-500"
         />
