@@ -1,3 +1,4 @@
+```tsx
 import React, { useState } from 'react';
 import {
   ShieldCheck,
@@ -455,10 +456,13 @@ export default function App() {
                   className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"
                 >
                   <div className="font-bold text-slate-900 text-sm">
-                    {med.brand_name}
+                    {med.name}
                   </div>
                   <div className="text-xs text-emerald-700 font-medium mt-0.5">
-                    {med.salt} • {med.strength}
+                    {med.short_composition_1} • ₹{med.price_inr}
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    {med.manufacturer_name} • {med.pack_size_label}
                   </div>
                 </div>
               ))}
@@ -617,3 +621,5 @@ export default function App() {
     </div>
   );
 }
+
+```
