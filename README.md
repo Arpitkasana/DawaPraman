@@ -1,4 +1,4 @@
-# MedVerify India - DawAI Suraksha (V2 Secure Architecture)
+# DawaPraman India - DawAI Suraksha
 
 ## Deployment
 1. Run `supabase/schema.sql` in your Supabase SQL Editor.
