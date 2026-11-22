@@ -293,8 +293,7 @@ export default function App() {
               </button>
               {interactionResult && (
                 <div
-                  className={'p-3 rounded-xl text-xs font-medium flex items-start gap-2 ${
-                    interactionResult.safe
+                  className={'p-3 rounded-xl text-xs font-medium flex items-start gap-2 ' + (interactionResult.safe ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200')}
                       ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                       : 'bg-red-50 text-red-800 border border-red-200'
                   }'}
@@ -565,11 +564,10 @@ export default function App() {
               {waMessages.map((m, i) => (
                 <div
                   key={i}
-                  className={'p-2.5 rounded-xl text-xs max-w-[85%] ${
+                  className={'p-2.5 rounded-xl text-xs max-w-[85%] + (
                     m.from === 'user'
                       ? 'bg-emerald-600 text-white ml-auto'
-                      : 'bg-white text-slate-800 border border-slate-200'
-                  }'}
+                      : 'bg-white text-slate-800 border border-slate-200')}
                 >
                   {m.text}
                 </div>
