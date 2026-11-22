@@ -1,6 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+function normalizeComposition(comp1?: string | null, comp2?: string | null): string {
+  return [comp1 ?? "", comp2 ?? ""]
+    .join(" ")
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, " ") // remove dosage strengths like (500mg)
+    .replace(/[^a-z0-9+/\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
