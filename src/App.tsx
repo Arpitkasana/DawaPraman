@@ -163,11 +163,11 @@ export default function App() {
     setWaInput('');
 
     const res = await verifyMedicine(code);
-    let reply = '⚠️ Verify Nahi Ho Payi (Server offline ya batch nahi mila).';
+    let reply = 'Verify Nahi Ho Payi (Server offline ya batch nahi mila).';
     if (res.status === 'green') {
-      reply = `✅ ASLI DAWAI: ${res.medicine} (Exp: ${res.exp})`;
+      reply = 'ASLI DAWAI: ' + res.medicine + ' (Exp: ' + res.exp + ')';
     } else if (res.status === 'red') {
-      reply = `🚨 NAKLI / RECALLED: Is dawai ko mat lein! (${res.details || 'CDSCO Alert'})`;
+      reply = 'NAKLI / RECALLED: Is dawai ko mat lein! (' + (res.details || 'CDSCO Alert') + ')';
     }
 
     setWaMessages((prev) => [...prev, { from: 'bot', text: reply }]);
