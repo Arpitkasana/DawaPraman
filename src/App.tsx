@@ -147,8 +147,8 @@ export default function App() {
       return;
     }
 
-    const trackingId = `MED-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-    setReportSuccess(`Report CDSCO ko bhej di gayi. Tracking ID: ${trackingId}`);
+    const trackingId = 'MED-2026-${Math.floor(1000 + Math.random() * 9000)}';
+    setReportSuccess('Report CDSCO ko bhej di gayi. Tracking ID: ${trackingId}');
     setChemistName('');
     setCity('');
     setReportBatch('');
