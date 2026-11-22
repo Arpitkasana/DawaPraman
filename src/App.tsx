@@ -565,11 +565,11 @@ export default function App() {
               {waMessages.map((m, i) => (
                 <div
                   key={i}
-                  className={`p-2.5 rounded-xl text-xs max-w-[85%] ${
+                  className={'p-2.5 rounded-xl text-xs max-w-[85%] ${
                     m.from === 'user'
                       ? 'bg-emerald-600 text-white ml-auto'
                       : 'bg-white text-slate-800 border border-slate-200'
-                  }`}
+                  }'}
                 >
                   {m.text}
                 </div>
@@ -608,9 +608,9 @@ export default function App() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id as Tab)}
-              className={`flex flex-col items-center gap-0.5 py-1 rounded-lg transition ${
+              className={'flex flex-col items-center gap-0.5 py-1 rounded-lg transition ${
                 active ? 'text-emerald-600 font-bold' : 'text-slate-400'
-              }`}
+              }'}
             >
               <Icon className="w-5 h-5" />
               <span className="text-[10px]">{item.label}</span>
