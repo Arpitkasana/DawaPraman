@@ -147,8 +147,8 @@ export default function App() {
       return;
     }
 
-    const trackingId = 'MED-2026-${Math.floor(1000 + Math.random() * 9000)}';
-    setReportSuccess('Report CDSCO ko bhej di gayi. Tracking ID: ${trackingId}');
+    const trackingId = 'MED-2026-' + Math.floor(1000 + Math.random() * 9000);
+    setReportSuccess('Report CDSCO ko bhej di gayi. Tracking ID: ' + trackingId);
     setChemistName('');
     setCity('');
     setReportBatch('');
@@ -608,9 +608,7 @@ export default function App() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id as Tab)}
-              className={'flex flex-col items-center gap-0.5 py-1 rounded-lg transition ${
-                active ? 'text-emerald-600 font-bold' : 'text-slate-400'
-              }'}
+              className={'flex flex-col items-center gap-0.5 py-1 rounded-lg transition ' + (active ? 'text-emerald-600 font-bold' : 'text-slate-400')}
             >
               <Icon className="w-5 h-5" />
               <span className="text-[10px]">{item.label}</span>
@@ -621,5 +619,5 @@ export default function App() {
     </div>
   );
 }
-export default App;
+
 ```
