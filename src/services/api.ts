@@ -1,37 +1,38 @@
-import { validators } from '../lib/validation';
+import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export async function verifyMedicine(batchNo: string, qrPayload?: string) {
-  if (!validators.batchNo(batchNo)) {
-    return { status: 'yellow', message: 'Invalid Batch Format' };
-  }
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// 1. VERIFY - Batch ya Naam se
+export async function verifyMedicine(batchNo: string) {
   try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-medicine`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${ANON_KEY}`
-      },
-      body: JSON.stringify({ batchNo, qrPayload })
+    const { data, error } = await supabase.functions.invoke('verify-medicine', {
+      body: { query: batchNo, batchNo: batchNo },
     });
-
-    if (!res.ok) throw new Error('Backend offline');
-    return await res.json(); 
-  } catch (error) {
-    return { status: 'yellow', message: 'Verification Service Unavailable' };
+    if (error) throw error;
+    return data;
+  } catch (e) {
+    return { status: 'yellow', message: 'Verify Nahi Ho Payi' };
   }
 }
 
+// 2. SEARCH - ✅ YAHAN FIX HAI
 export async function searchMedicines(query: string) {
-  if (query.length < 3) return [];
-  
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/search-medicines?q=${encodeURIComponent(query)}`, {
-    headers: { 'Authorization': `Bearer ${ANON_KEY}` }
-  });
-  
-  if (!res.ok) throw new Error('Search failed');
-  return await res.json();
+  const q = query.trim();
+  if (q.length < 3) return [];
+
+  // Naam OR Composition dono me dhoondho
+  const { data, error } = await supabase
+    .from('medicines')
+    .select('id, name, short_composition_1, short_composition_2, manufacturer_name, price_inr, pack_size_label, is_discontinued')
+    .or(`name.ilike.%${q}%,short_composition_1.ilike.%${q}%,short_composition_2.ilike.%${q}%`)
+    .limit(20);
+
+  if (error) {
+    console.error('Search error:', error);
+    return [];
+  }
+  return data || [];
 }
