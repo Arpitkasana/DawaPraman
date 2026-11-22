@@ -187,7 +187,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="font-extrabold text-base leading-tight text-slate-900">
-              MedVerify India
+              DawaPraman India
             </h1>
             <p className="text-[11px] font-semibold text-emerald-600">
               DawAI Suraksha
@@ -552,7 +552,7 @@ export default function App() {
         <div className="fixed sm:absolute inset-0 bg-black/50 z-40 flex items-end justify-center p-3">
           <div className="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[75%]">
             <div className="bg-emerald-700 text-white p-3 flex items-center justify-between">
-              <div className="font-bold text-sm">MedVerify WhatsApp Bot</div>
+              <div className="font-bold text-sm">DawaPraman WhatsApp Bot</div>
               <button onClick={() => setWaOpen(false)}>
                 <X className="w-5 h-5" />
               </button>
