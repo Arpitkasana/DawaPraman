@@ -23,7 +23,7 @@ import VerifiedCard from './components/VerifiedCard';
 
 type Tab = 'home' | 'scan' | 'search' | 'report';
 
-export default function App() {
+export function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [lang, setLang] = useState<'hi' | 'en'>(
     () => (sessionStorage.getItem('lang') as 'hi' | 'en') || 'hi'
