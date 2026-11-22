@@ -1,6 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, ShieldCheck } from 'lucide-react';
 
+const isBanned = Boolean(data.bannedMatch) || data.status === "red";
+const isDiscontinued = Boolean(data.details?.isDiscontinued);
+
+// Inside the card JSX:
+{isBanned && (
+  <div className="mt-3 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-900">
+    <div className="font-bold uppercase text-red-700">
+      Banned / Prohibited Composition Alert
+    </div>
+    {data.bannedMatch?.drug_rule && (
+      <div className="mt-1"><span className="font-semibold">Rule:</span> {data.bannedMatch.drug_rule}</div>
+    )}
+    {data.bannedMatch?.notification_info && (
+      <div><span className="font-semibold">Notification:</span> {data.bannedMatch.notification_info}</div>
+    )}
+    {data.bannedMatch?.legal_note && (
+      <div className="mt-1 text-red-800"><span className="font-semibold">Legal Note:</span> {data.bannedMatch.legal_note}</div>
+    )}
+  </div>
+)}
+
 export default function VerifiedCard({ data }: { data: any }) {
   const [ticker, setTicker] = useState('');
 
