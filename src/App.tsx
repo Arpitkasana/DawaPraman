@@ -293,11 +293,11 @@ export default function App() {
               </button>
               {interactionResult && (
                 <div
-                  className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 ${
+                  className={'p-3 rounded-xl text-xs font-medium flex items-start gap-2 ${
                     interactionResult.safe
                       ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                       : 'bg-red-50 text-red-800 border border-red-200'
-                  }`}
+                  }'}
                 >
                   {interactionResult.safe ? (
                     <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
