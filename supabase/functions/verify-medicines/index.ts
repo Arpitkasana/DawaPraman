@@ -11,6 +11,27 @@ const jsonHeaders = {
   "Content-Type": "application/json",
 };
 
+const normalizeBatch = (val: string) => val.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+async function signToken(secret: string, rawCode: string, serverTime: string) {
+  if (!secret) return "UNVERIFIED-KEY";
+  const payloadToSign = `${rawCode}:${serverTime}`;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payloadToSign));
+  return Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .substring(0, 12)
+    .toUpperCase();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -18,10 +39,10 @@ serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const rawCode = (body.batchNo ?? body.query ?? "").toString().trim();
-    const batchNo = rawCode.toUpperCase();
+    const rawCode = (body.batchNo ?? body.query ?? "").toString().trim().toUpperCase();
+    const normalizedBatch = normalizeBatch(rawCode);
 
-    if (!batchNo) {
+    if (!normalizedBatch) {
       return new Response(
         JSON.stringify({ status: "yellow", message: "Batch number is required" }),
         { status: 400, headers: jsonHeaders }
@@ -42,12 +63,12 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // 1. Check CDSCO recall list first (ignore if table isn't created yet)
-    const { data: recall, error: recallError } = await supabase
+    // 1. Check CDSCO / State NSQ & Recall list
+    const { data: recallRows, error: recallError } = await supabase
       .from("cdsco_recalls")
       .select("*")
-      .eq("batch_no", batchNo)
-      .maybeSingle();
+      .eq("batch_no_normalized", normalizedBatch)
+      .limit(1);
 
     if (recallError && recallError.code !== "42P01") {
       console.error("cdsco_recalls error:", recallError);
@@ -60,23 +81,32 @@ serve(async (req) => {
       );
     }
 
+    const recall = recallRows?.[0];
     if (recall) {
+      const detailParts = [
+        recall.product_name || recall.product,
+        recall.manufacturer ? `Mfg: ${recall.manufacturer}` : null,
+        recall.reason || recall.reason_cat || "Flagged in CDSCO lab/recall alert",
+        recall.testing_lab || recall.lab ? `Lab: ${recall.testing_lab || recall.lab}` : null,
+        "Source: CDSCO, compiled by blacklisted.co.in",
+      ].filter(Boolean);
+
       return new Response(
         JSON.stringify({
           status: "red",
-          message: "Batch recalled by CDSCO",
-          details: recall.reason,
+          message: "Failed CDSCO Lab Test / Recalled Batch",
+          details: detailParts.join(" • "),
         }),
         { status: 200, headers: jsonHeaders }
       );
     }
 
-    // 2. Query batches table directly (no FK join dependency)
-    const { data: batch, error: batchError } = await supabase
+    // 2. Check manufacturer batch whitelist
+    const { data: batchRows, error: batchError } = await supabase
       .from("batches")
       .select("*")
-      .eq("batch_no", batchNo)
-      .maybeSingle();
+      .ilike("batch_no", rawCode)
+      .limit(1);
 
     if (batchError) {
       console.error("batches error:", batchError);
@@ -89,63 +119,75 @@ serve(async (req) => {
       );
     }
 
-    if (!batch || batch.is_genuine === false) {
+    const batch = batchRows?.[0];
+    if (batch && batch.is_genuine !== false) {
+      let medRecord: Record<string, any> | null = null;
+      if (batch.medicine_id !== undefined && batch.medicine_id !== null) {
+        const { data: med } = await supabase
+          .from("medicines")
+          .select("*")
+          .eq("id", batch.medicine_id)
+          .maybeSingle();
+        medRecord = med;
+      }
+
+      const serverTime = new Date().toISOString();
+      const verificationToken = await signToken(verifySecretKey, rawCode, serverTime);
+      const medicineName =
+        medRecord?.brand_name ?? medRecord?.name ?? batch.medicine_name ?? "Verified Medicine";
+
       return new Response(
         JSON.stringify({
-          status: "yellow",
-          message: "Batch not found in manufacturer records",
+          status: "green",
+          medicineId: batch.medicine_id ?? medRecord?.id,
+          medicine: medicineName,
+          mfg: batch.mfg_date,
+          exp: batch.exp_date,
+          secureMeta: {
+            timestamp: serverTime,
+            verificationToken,
+          },
         }),
         { status: 200, headers: jsonHeaders }
       );
     }
 
-    // 3. Look up medicine details separately if medicine_id is present
-    let medRecord: Record<string, any> | null = null;
-    if (batch.medicine_id !== undefined && batch.medicine_id !== null) {
-      const { data: med } = await supabase
-        .from("medicines")
-        .select("*")
-        .eq("id", batch.medicine_id)
-        .maybeSingle();
-      medRecord = med;
+    // 3. Fallback check on medicines.batch_no
+    const { data: medBatchRows, error: medBatchError } = await supabase
+      .from("medicines")
+      .select("*")
+      .or(`batch_no.ilike.${rawCode},batch_no.ilike.${normalizedBatch}`)
+      .limit(1);
+
+    if (medBatchError) {
+      console.error("medicines batch lookup error:", medBatchError);
     }
 
-    // 4. Generate signed verification token
-    const serverTime = new Date().toISOString();
-    let verificationToken = "UNVERIFIED-KEY";
+    const fallbackMed = medBatchRows?.[0];
+    if (fallbackMed) {
+      const serverTime = new Date().toISOString();
+      const verificationToken = await signToken(verifySecretKey, rawCode, serverTime);
 
-    if (verifySecretKey) {
-      const payloadToSign = `${batchNo}:${serverTime}`;
-      const encoder = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        "raw",
-        encoder.encode(verifySecretKey),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"]
+      return new Response(
+        JSON.stringify({
+          status: "green",
+          medicine: fallbackMed.name ?? "Verified Medicine",
+          mfg: fallbackMed.mfg_date ?? "2026-01-01",
+          exp: fallbackMed.exp_date ?? "2028-12-31",
+          secureMeta: {
+            timestamp: serverTime,
+            verificationToken,
+          },
+        }),
+        { status: 200, headers: jsonHeaders }
       );
-      const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payloadToSign));
-      verificationToken = Array.from(new Uint8Array(signature))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
-        .substring(0, 12)
-        .toUpperCase();
     }
-
-    const medicineName =
-      medRecord?.brand_name ?? medRecord?.name ?? batch.medicine_name ?? "Verified Medicine";
 
     return new Response(
       JSON.stringify({
-        status: "green",
-        medicineId: batch.medicine_id ?? medRecord?.id,
-        medicine: medicineName,
-        mfg: batch.mfg_date,
-        exp: batch.exp_date,
-        secureMeta: {
-          timestamp: serverTime,
-          verificationToken,
-        },
+        status: "yellow",
+        message:
+          "Not found in CDSCO failed/recalled batch records or registered manufacturer batches. Absence from a recall list does not guarantee authenticity.",
       }),
       { status: 200, headers: jsonHeaders }
     );
