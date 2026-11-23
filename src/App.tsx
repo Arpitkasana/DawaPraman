@@ -68,7 +68,7 @@ export default function App() {
   >([
     {
       from: 'bot',
-      text: 'Namaste! Apni dawai ka Batch Number bhejein (e.g. DOLO2026A) verify karne ke liye.',
+      text: 'Namaste! Apni dawai ka Batch Number bhejein (e.g. DOLO2026A) ya SEARCH <naam> likhein.',
     },
   ]);
 
@@ -81,6 +81,9 @@ export default function App() {
   const handleVerify = async (e?: React.FormEvent, customBatch?: string) => {
     if (e) e.preventDefault();
     const targetBatch = (customBatch ?? batchNo).trim().toUpperCase();
+    if (customBatch) {
+      setBatchNo(targetBatch);
+    }
     setScanError('');
     setScanResult(null);
 
@@ -97,6 +100,13 @@ export default function App() {
     const res = await verifyMedicine(targetBatch);
     setScanResult(res);
     setScanLoading(false);
+  };
+
+  const handleVerifyFromSearch = async (code: string) => {
+    const cleanCode = code.trim().toUpperCase();
+    setBatchNo(cleanCode);
+    setActiveTab('scan');
+    await handleVerify(undefined, cleanCode);
   };
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -173,7 +183,10 @@ export default function App() {
         if (!meds.length) {
           setWaMessages((prev) => [
             ...prev,
-            { from: 'bot', text: `"${searchMatch[1].trim()}" ke liye koi dawai nahi mili.` },
+            {
+              from: 'bot',
+              text: `"${searchMatch[1].trim()}" ke liye koi dawai nahi mili.`,
+            },
           ]);
           return;
         }
@@ -188,7 +201,10 @@ export default function App() {
       } catch (err: any) {
         setWaMessages((prev) => [
           ...prev,
-          { from: 'bot', text: `Search Error: ${err?.message || 'Unable to search'}` },
+          {
+            from: 'bot',
+            text: `Search Error: ${err?.message || 'Unable to search'}`,
+          },
         ]);
       }
       return;
@@ -196,16 +212,58 @@ export default function App() {
 
     const code = raw.toUpperCase();
     const res = await verifyMedicine(code);
-    let reply = res?.message
-      ? `Verify Nahi Ho Payi: ${res.message}`
-      : 'Verify Nahi Ho Payi (Server offline ya batch nahi mila).';
 
     if (res?.status === 'green') {
-      reply = `ASLI DAWAI: ${res.medicine} (Mfg: ${res.mfg}, Exp: ${res.exp})`;
-    } else if (res?.status === 'red') {
-      reply = `NAKLI / RECALLED: Is dawai ko mat lein! (${res.details || 'CDSCO Alert'})`;
+      setWaMessages((prev) => [
+        ...prev,
+        {
+          from: 'bot',
+          text: `ASLI DAWAI: ${res.medicine} (Mfg: ${res.mfg}, Exp: ${res.exp})`,
+        },
+      ]);
+      return;
     }
 
+    if (res?.status === 'red') {
+      setWaMessages((prev) => [
+        ...prev,
+        {
+          from: 'bot',
+          text: `NAKLI / RECALLED: Is dawai ko mat lein! (${res.details || 'CDSCO Alert'})`,
+        },
+      ]);
+      return;
+    }
+
+    // Fallback: if input looks like a medicine name (contains spaces), search catalog automatically
+    if (raw.includes(' ') && raw.length >= 3) {
+      try {
+        const meds = await searchMedicines(raw);
+        if (meds.length > 0) {
+          const list = meds
+            .slice(0, 3)
+            .map(
+              (m: any, idx: number) =>
+                `${idx + 1}. ${m.name}${m.batch_no ? ` — Batch: ${m.batch_no}` : ''}`
+            )
+            .join('\n');
+          setWaMessages((prev) => [
+            ...prev,
+            {
+              from: 'bot',
+              text: `Medicine mili:\n${list}\n\nVerify karne ke liye upar wala Batch Number bhejein.`,
+            },
+          ]);
+          return;
+        }
+      } catch {
+        // Ignore and fall through to standard yellow message
+      }
+    }
+
+    const reply = res?.message
+      ? `Verify Nahi Ho Payi: ${res.message}`
+      : 'Verify Nahi Ho Payi (Server offline ya batch nahi mila).';
     setWaMessages((prev) => [...prev, { from: 'bot', text: reply }]);
   };
 
@@ -562,9 +620,13 @@ export default function App() {
 
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 pt-0.5">
                     {med.batch_no && (
-                      <span className="font-mono font-semibold text-slate-700">
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyFromSearch(med.batch_no)}
+                        className="font-mono font-semibold text-emerald-700 underline underline-offset-2"
+                      >
                         Batch: {med.batch_no}
-                      </span>
+                      </button>
                     )}
                     {med.mfg_date && <span>Mfg: {med.mfg_date}</span>}
                     {med.exp_date && <span>Exp: {med.exp_date}</span>}
@@ -688,7 +750,7 @@ export default function App() {
                 type="text"
                 value={waInput}
                 onChange={(e) => setWaInput(e.target.value)}
-                placeholder="Type Batch No..."
+                placeholder="Type Batch No or SEARCH <name>..."
                 className="flex-1 text-xs border border-slate-300 rounded-lg px-3 py-2"
               />
               <button
