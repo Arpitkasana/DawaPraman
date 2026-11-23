@@ -6,98 +6,133 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-function normalizeComposition(comp1?: string | null, comp2?: string | null): string {
-  return [comp1 ?? "", comp2 ?? ""]
-    .join(" ")
-    .toLowerCase()
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/[^a-z0-9+/\s-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+const jsonHeaders = {
+  ...corsHeaders,
+  "Content-Type": "application/json",
+};
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   try {
-    const body = await req.json();
-    const query = (body.query || body.batchNo || "").toString().trim();
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const body = await req.json().catch(() => ({}));
+    const rawCode = (body.batchNo ?? body.query ?? "").toString().trim();
+    const batchNo = rawCode.toUpperCase();
 
-    // 1. Lookup medicine in catalog (`med`)
-    let { data: med } = await supabase
-      .from("medicines")
-      .select("*")
-      .ilike("name", query)
-      .limit(1)
-      .maybeSingle();
-
-    if (!med) {
-      const fallback = await supabase
-        .from("medicines")
-        .select("*")
-        .ilike("name", `%${query}%`)
-        .limit(1)
-        .maybeSingle();
-      med = fallback.data;
-    }
-
-    if (!med) {
+    if (!batchNo) {
       return new Response(
-        JSON.stringify({ status: "yellow", message: "Medicine not found in catalog" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ status: "yellow", message: "Batch number is required" }),
+        { status: 400, headers: jsonHeaders }
       );
     }
 
-    // 2. Check medicine composition against banned_drugs
-    const normalizedComp = normalizeComposition(med.short_composition1, med.short_composition2);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const verifySecretKey = Deno.env.get("VERIFY_SECRET_KEY");
 
-    const { data: bannedRows } = await supabase
-      .from("banned_drugs")
-      .select("sr_no, drug_rule, notification_info, required_salts, match_mode, legal_note");
+    if (!supabaseUrl || !serviceRoleKey) {
+      return new Response(
+        JSON.stringify({ status: "yellow", message: "Server configuration missing" }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
 
-    const matchedBan = (bannedRows ?? []).find((rule) => {
-      const salts: string[] = Array.isArray(rule.required_salts) ? rule.required_salts : [];
-      if (!salts.length) return false;
-      if (rule.match_mode === "any") {
-        return salts.some((salt) => normalizedComp.includes(salt.toLowerCase()));
-      }
-      return salts.every((salt) => normalizedComp.includes(salt.toLowerCase()));
-    });
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // 3. Single `status` declaration before returning JSON
-    const status = matchedBan
-      ? "red"
-      : med.is_discontinued
-        ? "yellow"
-        : "green";
+    // 1. Check CDSCO recall list first
+    const { data: recall, error: recallError } = await supabase
+      .from("cdsco_recalls")
+      .select("*")
+      .eq("batch_no", batchNo)
+      .maybeSingle();
 
+    if (recallError) {
+      return new Response(
+        JSON.stringify({ status: "yellow", message: "Error checking recall records" }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
+
+    if (recall) {
+      return new Response(
+        JSON.stringify({
+          status: "red",
+          message: "Batch recalled by CDSCO",
+          details: recall.reason,
+        }),
+        { status: 200, headers: jsonHeaders }
+      );
+    }
+
+    // 2. Check manufacturer batch record
+    const { data: batch, error: batchError } = await supabase
+      .from("batches")
+      .select("*, medicines(*)")
+      .eq("batch_no", batchNo)
+      .maybeSingle();
+
+    if (batchError) {
+      return new Response(
+        JSON.stringify({ status: "yellow", message: "Error checking batch records" }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
+
+    if (!batch || !batch.is_genuine) {
+      return new Response(
+        JSON.stringify({
+          status: "yellow",
+          message: "Batch not found in manufacturer records",
+        }),
+        { status: 200, headers: jsonHeaders }
+      );
+    }
+
+    // 3. Generate signed verification token
     const serverTime = new Date().toISOString();
+    let verificationToken = "UNVERIFIED-KEY";
+
+    if (verifySecretKey) {
+      const payloadToSign = `${batchNo}:${serverTime}`;
+      const encoder = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(verifySecretKey),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"]
+      );
+      const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payloadToSign));
+      verificationToken = Array.from(new Uint8Array(signature))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("")
+        .substring(0, 12)
+        .toUpperCase();
+    }
+
+    const medicineName =
+      batch.medicines?.brand_name ?? batch.medicines?.name ?? "Verified Medicine";
 
     return new Response(
       JSON.stringify({
-        status,
-        medicine: med.name,
-        bannedMatch: matchedBan ?? null,
-        details: {
-          manufacturer: med.manufacturer_name,
-          composition1: med.short_composition1,
-          composition2: med.short_composition2,
-          packSize: med.pack_size_label,
-          priceInr: med.price_inr,
-          isDiscontinued: med.is_discontinued,
+        status: "green",
+        medicineId: batch.medicine_id ?? batch.medicines?.id,
+        medicine: medicineName,
+        mfg: batch.mfg_date,
+        exp: batch.exp_date,
+        secureMeta: {
+          timestamp: serverTime,
+          verificationToken,
         },
-        secureMeta: { timestamp: serverTime, verificationToken: "VERIFIED" },
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: jsonHeaders }
     );
   } catch {
     return new Response(
-      JSON.stringify({ status: "yellow", message: "Invalid request" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ status: "yellow", message: "Invalid request payload" }),
+      { status: 400, headers: jsonHeaders }
     );
   }
 });
