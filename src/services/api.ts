@@ -28,24 +28,14 @@ export async function searchMedicines(query: string) {
     body: { query: cleaned },
   });
 
-  if (!error && data) {
-    if (Array.isArray(data)) return data;
-    if (Array.isArray(data.results)) return data.results;
-    if (Array.isArray(data.medicines)) return data.medicines;
+  if (error) {
+    throw new Error(error.message || 'Medicine search is temporarily unavailable.');
   }
 
-  const pattern = `%${cleaned.replace(/[%_,]/g, '')}%`;
-  const { data: rows, error: dbError } = await supabase
-    .from('medicines')
-    .select('*')
-    .or(`name.ilike.${pattern},batch_no.ilike.${pattern}`)
-    .limit(25);
-
-  if (dbError) {
-    throw new Error(dbError.message);
-  }
-
-  return rows ?? [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.results)) return data.results;
+  if (Array.isArray(data?.medicines)) return data.medicines;
+  return [];
 }
 
 export function normalizeSalt(raw: string): string {
