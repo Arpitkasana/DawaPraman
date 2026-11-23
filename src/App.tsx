@@ -24,6 +24,7 @@ import {
   verifyMedicine,
   searchMedicines,
   checkDrugInteraction,
+  fetchMedicinesForInteraction,
 } from './services/api';
 import { validators, sanitizeInput } from './lib/validation';
 import VerifiedCard from './components/VerifiedCard';
@@ -50,6 +51,7 @@ const COPY = {
     hidePdf: 'PDF छुपाएं',
     pdfFallback: 'यदि PDF यहाँ न खुले तो ऊपर दिए लिंक आइकन से नए टैब में खोलें।',
     interactionTitle: 'दवाई रिएक्शन चेकर (Interaction)',
+    interactionFilterPlaceholder: 'डेटाबेस से दवाई खोजें (जैसे Dolo, Crocin, Azithral)...',
     checkInteraction: 'रिएक्शन जांचें',
     checkingInteraction: 'रिएक्शन जांचा जा रहा है...',
     med1Placeholder: 'पहली दवाई या साल्ट (जैसे Aspirin, Dolo 650)',
@@ -119,6 +121,7 @@ const COPY = {
     hidePdf: 'Hide PDF',
     pdfFallback: 'If the PDF preview does not load, open it in a new tab using the icon above.',
     interactionTitle: 'Drug Interaction Checker',
+    interactionFilterPlaceholder: 'Filter database medicines (e.g. Dolo, Crocin, Azithral)...',
     checkInteraction: 'Check Interaction',
     checkingInteraction: 'Checking interaction...',
     med1Placeholder: 'First medicine or salt (e.g. Aspirin, Dolo 650)',
@@ -208,6 +211,27 @@ export default function App() {
     text: string;
     advice?: string;
   } | null>(null);
+  const [interactionFilter, setInteractionFilter] = useState('');
+  const [interactionMeds, setInteractionMeds] = useState<any[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const list = await fetchMedicinesForInteraction(interactionFilter);
+        if (active && Array.isArray(list)) {
+          setInteractionMeds(list);
+        }
+      } catch {
+        if (active) setInteractionMeds([]);
+      }
+    }, 200);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [interactionFilter]);
 
   // Report Fake state
   const [chemistName, setChemistName] = useState('');
@@ -721,6 +745,14 @@ export default function App() {
                 </h3>
               </div>
 
+              <input
+                type="text"
+                value={interactionFilter}
+                onChange={(e) => setInteractionFilter(e.target.value)}
+                placeholder={t.interactionFilterPlaceholder}
+                className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+
               <div className="grid grid-cols-1 gap-2">
                 <select
                   aria-label="First medicine"
@@ -728,8 +760,8 @@ export default function App() {
                   onChange={(e) => setMed1(e.target.value)}
                   className="text-xs border border-slate-300 rounded-lg p-2.5 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="Paracetamol 650">Paracetamol 650</option>
                   <option value="Aspirin 75">Aspirin 75</option>
+                  <option value="Paracetamol 650">Paracetamol 650</option>
                   <option value="Metformin 500">Metformin 500</option>
                   <option value="Amlodipine 5">Amlodipine 5</option>
                   <option value="Ibuprofen 400">Ibuprofen 400</option>
@@ -740,6 +772,12 @@ export default function App() {
                   <option value="Telmisartan 40">Telmisartan 40</option>
                   <option value="Warfarin 5">Warfarin 5</option>
                   <option value="Alcohol">Alcohol</option>
+                  {interactionMeds.map((m: any, i: number) => (
+                    <option key={`m1-${m.id ?? i}`} value={m.name}>
+                      {m.name}
+                      {m.short_composition1 ? ` (${m.short_composition1})` : ''}
+                    </option>
+                  ))}
                 </select>
 
                 <select
@@ -748,8 +786,8 @@ export default function App() {
                   onChange={(e) => setMed2(e.target.value)}
                   className="text-xs border border-slate-300 rounded-lg p-2.5 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="Azithromycin 500">Azithromycin 500</option>
                   <option value="Ibuprofen 400">Ibuprofen 400</option>
+                  <option value="Azithromycin 500">Azithromycin 500</option>
                   <option value="Alcohol">Alcohol</option>
                   <option value="Pantoprazole 40">Pantoprazole 40</option>
                   <option value="Paracetamol 650">Paracetamol 650</option>
@@ -761,6 +799,12 @@ export default function App() {
                   <option value="Omeprazole 20">Omeprazole 20</option>
                   <option value="Telmisartan 40">Telmisartan 40</option>
                   <option value="Warfarin 5">Warfarin 5</option>
+                  {interactionMeds.map((m: any, i: number) => (
+                    <option key={`m2-${m.id ?? i}`} value={m.name}>
+                      {m.name}
+                      {m.short_composition1 ? ` (${m.short_composition1})` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
