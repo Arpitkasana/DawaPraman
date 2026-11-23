@@ -15,6 +15,8 @@ import {
   Globe,
   FileWarning,
   Activity,
+  FileText,
+  ExternalLink,
 } from 'lucide-react';
 import { verifyMedicine, searchMedicines } from './services/api';
 import { validators, sanitizeInput } from './lib/validation';
@@ -22,11 +24,14 @@ import VerifiedCard from './components/VerifiedCard';
 
 type Tab = 'home' | 'scan' | 'search' | 'report';
 
+const BANNED_DRUGS_PDF_URL = '/banned-drugs.pdf';
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [lang, setLang] = useState<'hi' | 'en'>(
     () => (sessionStorage.getItem('lang') as 'hi' | 'en') || 'hi'
   );
+  const [showBannedPdf, setShowBannedPdf] = useState(false);
 
   // Scan state
   const [batchNo, setBatchNo] = useState('');
@@ -252,6 +257,62 @@ export default function App() {
                 <div className="text-base font-extrabold text-red-600">850+</div>
                 <div className="text-[10px] text-slate-500 font-medium">Fake Caught</div>
               </div>
+            </section>
+
+            {/* Banned Drugs PDF Loader */}
+            <section className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-red-600 shrink-0" />
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-800">
+                      {lang === 'hi' ? 'Banned Drugs List (PDF)' : 'Banned Drugs List (PDF)'}
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      {lang === 'hi'
+                        ? 'Zaroorat padne par PDF load karein'
+                        : 'Load official PDF document on demand'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowBannedPdf((prev) => !prev)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition"
+                  >
+                    {showBannedPdf
+                      ? lang === 'hi'
+                        ? 'Hide PDF'
+                        : 'Hide PDF'
+                      : lang === 'hi'
+                      ? 'Load PDF'
+                      : 'Load PDF'}
+                  </button>
+                  <a
+                    href={BANNED_DRUGS_PDF_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Open PDF in new tab"
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-lg transition"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+
+              {showBannedPdf && (
+                <div className="space-y-2 pt-1">
+                  <iframe
+                    src={BANNED_DRUGS_PDF_URL}
+                    title="Banned Drugs PDF"
+                    className="w-full h-80 rounded-xl border border-slate-200"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    Agar PDF preview na khule to upar external link icon se new tab me open karein.
+                  </p>
+                </div>
+              )}
             </section>
 
             {/* Drug Interaction Checker */}
