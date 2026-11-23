@@ -83,7 +83,29 @@ export async function checkDrugInteraction(medA: string, medB: string) {
       },
     }
   );
+export async function fetchMedicinesForInteraction(query = '') {
+  const clean = query.trim();
+  if (clean.length >= 2) {
+    return await searchMedicines(clean);
+  }
 
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/medicines?select=id,name,short_composition1,short_composition2&limit=50`,
+    {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+    }
+  );
+
+  if (!res.ok) return [];
+  const rows = await res.json();
+  return Array.isArray(rows) ? rows : [];
+}
   if (!res.ok) return null;
   const rows = await res.json();
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
