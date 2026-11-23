@@ -1,51 +1,36 @@
-import { createClient } from '@supabase/supabase-js';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const fnHeaders = {
+  'Content-Type': 'application/json',
+  apikey: SUPABASE_ANON_KEY,
+  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+};
 
 export async function verifyMedicine(batchNo: string) {
-  const { data, error } = await supabase.functions.invoke('verify-medicine', {
-    body: { batchNo },
-  });
-
-  if (error) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-medicine`, {
+      method: 'POST',
+      headers: fnHeaders,
+      body: JSON.stringify({ batchNo }),
+    });
+    return await res.json();
+  } catch {
     return {
       status: 'yellow',
-      message: error.message || 'Unable to verify batch right now.',
+      message: 'Unable to reach verification server.',
     };
   }
-
-  return data;
 }
 
 export async function searchMedicines(query: string) {
-  const cleaned = query.trim();
-  if (cleaned.length < 2) return [];
-
-  const { data, error } = await supabase.functions.invoke('search-medicines', {
-    body: { query: cleaned },
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/search-medicines`, {
+    method: 'POST',
+    headers: fnHeaders,
+    body: JSON.stringify({ query }),
   });
-
-  if (!error && data) {
-    if (Array.isArray(data)) return data;
-    if (Array.isArray(data.results)) return data.results;
-  }
-
-  // Fallback direct query on medicines table if Edge Function is not yet deployed
-  const pattern = `%${cleaned.replace(/[%_,]/g, '')}%`;
-  const { data: rows, error: dbError } = await supabase
-    .from('medicines')
-    .select('*')
-    .or(`name.ilike.${pattern},batch_no.ilike.${pattern}`)
-    .limit(25);
-
-  if (dbError) {
-    throw new Error(dbError.message);
-  }
-
-  return rows ?? [];
+  const data = await res.json();
+  return Array.isArray(data) ? data : data?.results ?? data?.medicines ?? [];
 }
 
 export function normalizeSalt(raw: string): string {
@@ -69,8 +54,6 @@ export function buildPairKey(drugA: string, drugB: string): string {
 
 export async function checkDrugInteraction(medA: string, medB: string) {
   const pairKey = buildPairKey(medA, medB);
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/drug_interactions?pair_key=eq.${encodeURIComponent(
@@ -83,14 +66,17 @@ export async function checkDrugInteraction(medA: string, medB: string) {
       },
     }
   );
+
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
 export async function fetchMedicinesForInteraction(query = '') {
   const clean = query.trim();
   if (clean.length >= 2) {
     return await searchMedicines(clean);
   }
-
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/medicines?select=id,name,short_composition1,short_composition2&limit=50`,
@@ -105,8 +91,4 @@ export async function fetchMedicinesForInteraction(query = '') {
   if (!res.ok) return [];
   const rows = await res.json();
   return Array.isArray(rows) ? rows : [];
-}
-  if (!res.ok) return null;
-  const rows = await res.json();
-  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 }
