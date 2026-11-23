@@ -387,7 +387,9 @@ export default function App() {
     if (!clean) return '';
     if (
       clean.length >= 3 &&
-      !/^(alcohol|aspirin|ibuprofen|paracetamol|metformin)$/i.test(clean)
+      !/^(alcohol|aspirin|ibuprofen|paracetamol|metformin|azithromycin|atorvastatin|clopidogrel|omeprazole|amlodipine|telmisartan|warfarin)$/i.test(
+        clean
+      )
     ) {
       try {
         const matches = await searchMedicines(clean);
@@ -719,38 +721,47 @@ export default function App() {
                 </h3>
               </div>
 
-              <datalist id="common-salts-list">
-                <option value="Paracetamol 650" />
-                <option value="Aspirin 75" />
-                <option value="Ibuprofen 400" />
-                <option value="Metformin 500" />
-                <option value="Azithromycin 500" />
-                <option value="Atorvastatin 10" />
-                <option value="Clopidogrel 75" />
-                <option value="Omeprazole 20" />
-                <option value="Amlodipine 5" />
-                <option value="Telmisartan 40" />
-                <option value="Warfarin 5" />
-                <option value="Alcohol" />
-              </datalist>
-
               <div className="grid grid-cols-1 gap-2">
-                <input
-                  type="text"
-                  list="common-salts-list"
+                <select
+                  aria-label="First medicine"
                   value={med1}
                   onChange={(e) => setMed1(e.target.value)}
-                  placeholder={t.med1Placeholder}
-                  className="text-xs border border-slate-300 rounded-lg p-2.5 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <input
-                  type="text"
-                  list="common-salts-list"
+                  className="text-xs border border-slate-300 rounded-lg p-2.5 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="Paracetamol 650">Paracetamol 650</option>
+                  <option value="Aspirin 75">Aspirin 75</option>
+                  <option value="Metformin 500">Metformin 500</option>
+                  <option value="Amlodipine 5">Amlodipine 5</option>
+                  <option value="Ibuprofen 400">Ibuprofen 400</option>
+                  <option value="Azithromycin 500">Azithromycin 500</option>
+                  <option value="Atorvastatin 10">Atorvastatin 10</option>
+                  <option value="Clopidogrel 75">Clopidogrel 75</option>
+                  <option value="Omeprazole 20">Omeprazole 20</option>
+                  <option value="Telmisartan 40">Telmisartan 40</option>
+                  <option value="Warfarin 5">Warfarin 5</option>
+                  <option value="Alcohol">Alcohol</option>
+                </select>
+
+                <select
+                  aria-label="Second medicine"
                   value={med2}
                   onChange={(e) => setMed2(e.target.value)}
-                  placeholder={t.med2Placeholder}
-                  className="text-xs border border-slate-300 rounded-lg p-2.5 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
+                  className="text-xs border border-slate-300 rounded-lg p-2.5 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="Azithromycin 500">Azithromycin 500</option>
+                  <option value="Ibuprofen 400">Ibuprofen 400</option>
+                  <option value="Alcohol">Alcohol</option>
+                  <option value="Pantoprazole 40">Pantoprazole 40</option>
+                  <option value="Paracetamol 650">Paracetamol 650</option>
+                  <option value="Aspirin 75">Aspirin 75</option>
+                  <option value="Metformin 500">Metformin 500</option>
+                  <option value="Amlodipine 5">Amlodipine 5</option>
+                  <option value="Atorvastatin 10">Atorvastatin 10</option>
+                  <option value="Clopidogrel 75">Clopidogrel 75</option>
+                  <option value="Omeprazole 20">Omeprazole 20</option>
+                  <option value="Telmisartan 40">Telmisartan 40</option>
+                  <option value="Warfarin 5">Warfarin 5</option>
+                </select>
               </div>
 
               <button
