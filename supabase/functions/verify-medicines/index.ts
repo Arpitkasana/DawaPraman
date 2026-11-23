@@ -29,7 +29,9 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || Deno.env.get("PROJECT_URL");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("PROJECT_SERVICE_ROLE_KEY");
+    const serviceRoleKey =
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("PROJECT_SERVICE_ROLE_KEY");
+    const verifySecretKey = Deno.env.get("VERIFY_SECRET_KEY") || "";
 
     if (!supabaseUrl || !serviceRoleKey) {
       return new Response(
@@ -48,8 +50,12 @@ serve(async (req) => {
       .maybeSingle();
 
     if (recallError) {
+      console.error("cdsco_recalls error:", recallError.message);
       return new Response(
-        JSON.stringify({ status: "yellow", message: "Error checking recall records" }),
+        JSON.stringify({
+          status: "yellow",
+          message: `Error checking recall records: ${recallError.message}`,
+        }),
         { status: 500, headers: jsonHeaders }
       );
     }
@@ -73,8 +79,12 @@ serve(async (req) => {
       .maybeSingle();
 
     if (batchError) {
+      console.error("batches error:", batchError.message);
       return new Response(
-        JSON.stringify({ status: "yellow", message: "Error checking batch records" }),
+        JSON.stringify({
+          status: "yellow",
+          message: `Error checking batch records: ${batchError.message}`,
+        }),
         { status: 500, headers: jsonHeaders }
       );
     }
@@ -111,13 +121,13 @@ serve(async (req) => {
         .toUpperCase();
     }
 
-    const medicineName =
-      batch.medicines?.brand_name ?? batch.medicines?.name ?? "Verified Medicine";
+    const medObj = Array.isArray(batch.medicines) ? batch.medicines[0] : batch.medicines;
+    const medicineName = medObj?.brand_name ?? medObj?.name ?? "Verified Medicine";
 
     return new Response(
       JSON.stringify({
         status: "green",
-        medicineId: batch.medicine_id ?? batch.medicines?.id,
+        medicineId: batch.medicine_id ?? medObj?.id,
         medicine: medicineName,
         mfg: batch.mfg_date,
         exp: batch.exp_date,
@@ -128,7 +138,8 @@ serve(async (req) => {
       }),
       { status: 200, headers: jsonHeaders }
     );
-  } catch {
+  } catch (err) {
+    console.error("verify-medicine unhandled error:", err);
     return new Response(
       JSON.stringify({ status: "yellow", message: "Invalid request payload" }),
       { status: 400, headers: jsonHeaders }
