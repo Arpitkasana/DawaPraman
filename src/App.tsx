@@ -266,7 +266,7 @@ export default function App() {
                   <FileText className="w-5 h-5 text-red-600 shrink-0" />
                   <div>
                     <h3 className="font-bold text-sm text-slate-800">
-                      {lang === 'hi' ? 'Banned Drugs List (PDF)' : 'Banned Drugs List (PDF)'}
+                      Banned Drugs List (PDF)
                     </h3>
                     <p className="text-[11px] text-slate-500">
                       {lang === 'hi'
@@ -281,13 +281,7 @@ export default function App() {
                     onClick={() => setShowBannedPdf((prev) => !prev)}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition"
                   >
-                    {showBannedPdf
-                      ? lang === 'hi'
-                        ? 'Hide PDF'
-                        : 'Hide PDF'
-                      : lang === 'hi'
-                      ? 'Load PDF'
-                      : 'Load PDF'}
+                    {showBannedPdf ? 'Hide PDF' : 'Load PDF'}
                   </button>
                   <a
                     href={BANNED_DRUGS_PDF_URL}
@@ -463,7 +457,9 @@ export default function App() {
                   <XCircle className="w-6 h-6 text-red-600" />
                   <span>Suspicious / Recalled! Is dawai ko mat lein</span>
                 </div>
-                <p className="text-xs text-red-900">{scanResult.details || scanResult.message}</p>
+                <p className="text-xs text-red-900">
+                  {scanResult.details || scanResult.message}
+                </p>
                 <button
                   onClick={() => setActiveTab('report')}
                   className="w-full bg-red-600 text-white text-xs font-bold py-2.5 rounded-lg"
@@ -510,19 +506,39 @@ export default function App() {
             )}
 
             <div className="space-y-2.5">
-              {searchResults.map((med) => (
+              {searchResults.map((med, idx) => (
                 <div
-                  key={med.id}
-                  className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"
+                  key={med.id ?? med.batch_no ?? idx}
+                  className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-1.5"
                 >
-                  <div className="font-bold text-slate-900 text-sm">
-                    {med.name}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-bold text-slate-900 text-sm">
+                      {med.name}
+                    </div>
+                    {(med.price_inr ?? med.price) != null && (
+                      <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md shrink-0">
+                        ₹{med.price_inr ?? med.price}
+                      </span>
+                    )}
                   </div>
-                  <div className="text-xs text-emerald-700 font-medium mt-0.5">
-                    {med.short_composition_1} • ₹{med.price_inr}
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    {med.manufacturer_name} • {med.pack_size_label}
+
+                  {(med.short_composition_1 || med.salt_composition) && (
+                    <div className="text-xs text-slate-600">
+                      {med.short_composition_1 || med.salt_composition}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500 pt-0.5">
+                    {med.batch_no && (
+                      <span className="font-mono font-semibold text-slate-700">
+                        Batch: {med.batch_no}
+                      </span>
+                    )}
+                    {med.mfg_date && <span>Mfg: {med.mfg_date}</span>}
+                    {med.exp_date && <span>Exp: {med.exp_date}</span>}
+                    {med.manufacturer_name && (
+                      <span>• {med.manufacturer_name}</span>
+                    )}
                   </div>
                 </div>
               ))}
