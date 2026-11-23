@@ -160,17 +160,49 @@ export default function App() {
 
   const handleWaSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    const code = waInput.trim().toUpperCase();
-    if (!code) return;
+    const raw = waInput.trim();
+    if (!raw) return;
 
-    setWaMessages((prev) => [...prev, { from: 'user', text: code }]);
+    setWaMessages((prev) => [...prev, { from: 'user', text: raw }]);
     setWaInput('');
 
+    const searchMatch = raw.match(/^(?:search|find|khoj)\s+(.+)$/i);
+    if (searchMatch) {
+      try {
+        const meds = await searchMedicines(searchMatch[1].trim());
+        if (!meds.length) {
+          setWaMessages((prev) => [
+            ...prev,
+            { from: 'bot', text: `"${searchMatch[1].trim()}" ke liye koi dawai nahi mili.` },
+          ]);
+          return;
+        }
+        const list = meds
+          .slice(0, 5)
+          .map(
+            (m: any, idx: number) =>
+              `${idx + 1}. ${m.name}${m.batch_no ? ` (Batch: ${m.batch_no})` : ''}`
+          )
+          .join('\n');
+        setWaMessages((prev) => [...prev, { from: 'bot', text: list }]);
+      } catch (err: any) {
+        setWaMessages((prev) => [
+          ...prev,
+          { from: 'bot', text: `Search Error: ${err?.message || 'Unable to search'}` },
+        ]);
+      }
+      return;
+    }
+
+    const code = raw.toUpperCase();
     const res = await verifyMedicine(code);
-    let reply = 'Verify Nahi Ho Payi (Server offline ya batch nahi mila).';
-    if (res.status === 'green') {
-      reply = `ASLI DAWAI: ${res.medicine} (Exp: ${res.exp})`;
-    } else if (res.status === 'red') {
+    let reply = res?.message
+      ? `Verify Nahi Ho Payi: ${res.message}`
+      : 'Verify Nahi Ho Payi (Server offline ya batch nahi mila).';
+
+    if (res?.status === 'green') {
+      reply = `ASLI DAWAI: ${res.medicine} (Mfg: ${res.mfg}, Exp: ${res.exp})`;
+    } else if (res?.status === 'red') {
       reply = `NAKLI / RECALLED: Is dawai ko mat lein! (${res.details || 'CDSCO Alert'})`;
     }
 
