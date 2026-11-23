@@ -49,6 +49,7 @@ export async function searchMedicines(query: string) {
   return rows ?? [];
 }
 
+// Normalize drug names before building an interaction pair key.
 export function normalizeSalt(raw: string): string {
   return raw
     .toUpperCase()
