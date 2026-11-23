@@ -20,6 +20,7 @@ import {
   ExternalLink,
   StopCircle,
 } from 'lucide-react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { verifyMedicine, searchMedicines } from './services/api';
 import { validators, sanitizeInput } from './lib/validation';
 import VerifiedCard from './components/VerifiedCard';
@@ -1066,6 +1067,7 @@ export default function App() {
           );
         })}
       </nav>
+      <SpeedInsights />
     </div>
   );
 }
