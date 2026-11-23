@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { Analytics } from '@vercel/analytics/react';
 import {
   ShieldCheck,
   QrCode,
@@ -1066,6 +1067,7 @@ export default function App() {
           );
         })}
       </nav>
+      <Analytics />
     </div>
   );
 }
