@@ -42,19 +42,19 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // 1. Check CDSCO recall list first
+    // 1. Check CDSCO recall list first (ignore if table isn't created yet)
     const { data: recall, error: recallError } = await supabase
       .from("cdsco_recalls")
       .select("*")
       .eq("batch_no", batchNo)
       .maybeSingle();
 
-    if (recallError) {
-      console.error("cdsco_recalls error:", recallError.message);
+    if (recallError && recallError.code !== "42P01") {
+      console.error("cdsco_recalls error:", recallError);
       return new Response(
         JSON.stringify({
           status: "yellow",
-          message: `Error checking recall records: ${recallError.message}`,
+          message: `Recall query error: ${recallError.message}`,
         }),
         { status: 500, headers: jsonHeaders }
       );
@@ -71,25 +71,25 @@ serve(async (req) => {
       );
     }
 
-    // 2. Check manufacturer batch record
+    // 2. Query batches table directly (no FK join dependency)
     const { data: batch, error: batchError } = await supabase
       .from("batches")
-      .select("*, medicines(*)")
+      .select("*")
       .eq("batch_no", batchNo)
       .maybeSingle();
 
     if (batchError) {
-      console.error("batches error:", batchError.message);
+      console.error("batches error:", batchError);
       return new Response(
         JSON.stringify({
           status: "yellow",
-          message: `Error checking batch records: ${batchError.message}`,
+          message: `Batch query error: ${batchError.message}`,
         }),
         { status: 500, headers: jsonHeaders }
       );
     }
 
-    if (!batch || !batch.is_genuine) {
+    if (!batch || batch.is_genuine === false) {
       return new Response(
         JSON.stringify({
           status: "yellow",
@@ -99,7 +99,18 @@ serve(async (req) => {
       );
     }
 
-    // 3. Generate signed verification token
+    // 3. Look up medicine details separately if medicine_id is present
+    let medRecord: Record<string, any> | null = null;
+    if (batch.medicine_id !== undefined && batch.medicine_id !== null) {
+      const { data: med } = await supabase
+        .from("medicines")
+        .select("*")
+        .eq("id", batch.medicine_id)
+        .maybeSingle();
+      medRecord = med;
+    }
+
+    // 4. Generate signed verification token
     const serverTime = new Date().toISOString();
     let verificationToken = "UNVERIFIED-KEY";
 
@@ -121,13 +132,13 @@ serve(async (req) => {
         .toUpperCase();
     }
 
-    const medObj = Array.isArray(batch.medicines) ? batch.medicines[0] : batch.medicines;
-    const medicineName = medObj?.brand_name ?? medObj?.name ?? "Verified Medicine";
+    const medicineName =
+      medRecord?.brand_name ?? medRecord?.name ?? batch.medicine_name ?? "Verified Medicine";
 
     return new Response(
       JSON.stringify({
         status: "green",
-        medicineId: batch.medicine_id ?? medObj?.id,
+        medicineId: batch.medicine_id ?? medRecord?.id,
         medicine: medicineName,
         mfg: batch.mfg_date,
         exp: batch.exp_date,
