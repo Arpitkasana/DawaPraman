@@ -1,3 +1,4 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -5,49 +6,66 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-Deno.serve(async (req) => {
+const jsonHeaders = {
+  ...corsHeaders,
+  "Content-Type": "application/json",
+};
+
+serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    // ✅ FIX 1: GET (?q=) aur POST (body) dono se query lo
-    const url = new URL(req.url);
-    const qParam = url.searchParams.get("q") || url.searchParams.get("query") || "";
     const body = await req.json().catch(() => ({}));
-    const query = (typeof body.query === "string" ? body.query : qParam).trim();
+    const rawQuery = (body.query ?? body.q ?? "").toString().trim();
 
-    if (!query) {
+    if (rawQuery.length < 2) {
+      return new Response(JSON.stringify({ results: [] }), {
+        status: 200,
+        headers: jsonHeaders,
+      });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || Deno.env.get("PROJECT_URL");
+    const serviceRoleKey =
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("PROJECT_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !serviceRoleKey) {
       return new Response(
-        JSON.stringify({ error: "Search query is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Server configuration missing", results: [] }),
+        { status: 500, headers: jsonHeaders }
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const safePattern = `%${rawQuery.replace(/[%_,]/g, "")}%`;
 
-    // ✅ FIX 2: Sahi column naam - underscore wale
     const { data, error } = await supabase
       .from("medicines")
-      .select(
-        "id, name, price_inr, is_discontinued, manufacturer_name, pack_size_label, short_composition_1, short_composition_2"
+      .select("*")
+      .or(
+        `name.ilike.${safePattern},batch_no.ilike.${safePattern},salt_composition.ilike.${safePattern},short_composition_1.ilike.${safePattern}`
       )
-      .or(`name.ilike.%${query}%,short_composition_1.ilike.%${query}%,short_composition_2.ilike.%${query}%`)
-      .limit(20);
+      .limit(25);
 
-    if (error) throw error;
+    if (error) {
+      console.error("search-medicines query error:", error);
+      return new Response(
+        JSON.stringify({ error: error.message, results: [] }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
 
-    return new Response(JSON.stringify(data ?? []), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    return new Response(JSON.stringify({ results: data ?? [] }), {
+      status: 200,
+      headers: jsonHeaders,
     });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Unexpected error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  } catch (err) {
+    console.error("search-medicines unhandled error:", err);
+    return new Response(
+      JSON.stringify({ error: "Invalid request", results: [] }),
+      { status: 400, headers: jsonHeaders }
+    );
   }
 });
