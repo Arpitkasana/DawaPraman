@@ -270,9 +270,37 @@ export default function App() {
     setScanLoading(false);
   };
 
+  const extractBatchFromScan = (rawDecoded: string): string => {
+    const trimmed = rawDecoded.trim();
+    if (!trimmed) return '';
+
+    try {
+      const url = new URL(trimmed);
+      const paramBatch =
+        url.searchParams.get('batch') ||
+        url.searchParams.get('batch_no') ||
+        url.searchParams.get('code');
+      if (paramBatch) {
+        return paramBatch.trim().toUpperCase();
+      }
+    } catch {
+      // Plain text payload
+    }
+
+    const labeledMatch = trimmed.match(
+      /batch(?:\s*(?:no|number))?\s*[:=-]\s*([A-Z0-9-]{4,24})/i
+    );
+    if (labeledMatch?.[1]) {
+      return labeledMatch[1].trim().toUpperCase();
+    }
+
+    return trimmed.toUpperCase();
+  };
+
   const startCameraScanner = async () => {
     setCameraError('');
     setScanError('');
+    setScanResult(null);
 
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError(t.cameraDenied);
@@ -282,8 +310,14 @@ export default function App() {
     await stopCamera();
     setCameraActive(true);
 
-    // Wait one tick so the target DOM element is mounted
-    await new Promise((r) => setTimeout(r, 60));
+    await new Promise((r) => setTimeout(r, 100));
+
+    const container = document.getElementById(QR_READER_ELEMENT_ID);
+    if (!container) {
+      setCameraError(t.cameraDenied);
+      setCameraActive(false);
+      return;
+    }
 
     try {
       const html5QrCode = new Html5Qrcode(QR_READER_ELEMENT_ID);
@@ -291,11 +325,15 @@ export default function App() {
 
       await html5QrCode.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 200, height: 200 } },
+        {
+          fps: 12,
+          qrbox: { width: 230, height: 230 },
+          aspectRatio: 1,
+        },
         async (decodedText) => {
-          // If QR encodes a URL or batch param, extract batch code; otherwise use raw text
-          const extracted = decodedText.trim().toUpperCase();
+          const extracted = extractBatchFromScan(decodedText);
           await stopCamera();
+          setBatchNo(extracted);
           await handleVerify(undefined, extracted);
         },
         () => {
