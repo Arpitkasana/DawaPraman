@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export async function verifyMedicine(batchNo: string) {
   const { data, error } = await supabase.functions.invoke('verify-medicine', {
@@ -28,24 +28,14 @@ export async function searchMedicines(query: string) {
     body: { query: cleaned },
   });
 
-  if (!error && data) {
-    if (Array.isArray(data)) return data;
-    if (Array.isArray(data.results)) return data.results;
+  if (error) {
+    throw new Error(error.message || 'Medicine search is temporarily unavailable.');
   }
 
-  // Fallback direct query on medicines table if Edge Function is not yet deployed
-  const pattern = `%${cleaned.replace(/[%_,]/g, '')}%`;
-  const { data: rows, error: dbError } = await supabase
-    .from('medicines')
-    .select('*')
-    .or(`name.ilike.${pattern},batch_no.ilike.${pattern}`)
-    .limit(25);
-
-  if (dbError) {
-    throw new Error(dbError.message);
-  }
-
-  return rows ?? [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.results)) return data.results;
+  if (Array.isArray(data?.medicines)) return data.medicines;
+  return [];
 }
 
 export function normalizeSalt(raw: string): string {
@@ -69,9 +59,6 @@ export function buildPairKey(drugA: string, drugB: string): string {
 
 export async function checkDrugInteraction(medA: string, medB: string) {
   const pairKey = buildPairKey(medA, medB);
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/drug_interactions?pair_key=eq.${encodeURIComponent(
       pairKey
@@ -87,4 +74,25 @@ export async function checkDrugInteraction(medA: string, medB: string) {
   if (!res.ok) return null;
   const rows = await res.json();
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+export async function fetchMedicinesForInteraction(query = '') {
+  const clean = query.trim();
+  if (clean.length >= 2) {
+    return await searchMedicines(clean);
+  }
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/medicines?select=id,name,short_composition1,short_composition2&limit=50`,
+    {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+    }
+  );
+
+  if (!res.ok) return [];
+  const rows = await res.json();
+  return Array.isArray(rows) ? rows : [];
 }

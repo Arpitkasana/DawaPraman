@@ -20,7 +20,12 @@ import {
   ExternalLink,
   StopCircle,
 } from 'lucide-react';
-import { verifyMedicine, searchMedicines } from './services/api';
+import {
+  verifyMedicine,
+  searchMedicines,
+  checkDrugInteraction,
+  fetchMedicinesForInteraction,
+} from './services/api';
 import { validators, sanitizeInput } from './lib/validation';
 import VerifiedCard from './components/VerifiedCard';
 
@@ -46,7 +51,12 @@ const COPY = {
     hidePdf: 'PDF छुपाएं',
     pdfFallback: 'यदि PDF यहाँ न खुले तो ऊपर दिए लिंक आइकन से नए टैब में खोलें।',
     interactionTitle: 'दवाई रिएक्शन चेकर (Interaction)',
+    interactionFilterPlaceholder: 'डेटाबेस से दवाई खोजें (जैसे Dolo, Crocin, Azithral)...',
     checkInteraction: 'रिएक्शन जांचें',
+    checkingInteraction: 'रिएक्शन जांचा जा रहा है...',
+    med1Placeholder: 'पहली दवाई या साल्ट (जैसे Aspirin, Dolo 650)',
+    med2Placeholder: 'दूसरी दवाई या साल्ट (जैसे Ibuprofen, Alcohol)',
+    interactionSameDrug: 'कृपया दो अलग-अलग दवाइयां या साल्ट चुनें।',
     interactionDanger1: 'खतरनाक रिएक्शन: पेट में ब्लीडिंग और अल्सर का खतरा बढ़ सकता है। डॉक्टर से पूछें।',
     interactionDanger2: 'अधिक जोखिम: लैक्टिक एसिडोसिस का खतरा। एक साथ बिल्कुल न लें।',
     interactionSafe: 'कोई बड़ा रिएक्शन नहीं मिला: आमतौर पर सुरक्षित है, फिर भी डॉक्टर की सलाह ज़रूरी है।',
@@ -111,7 +121,12 @@ const COPY = {
     hidePdf: 'Hide PDF',
     pdfFallback: 'If the PDF preview does not load, open it in a new tab using the icon above.',
     interactionTitle: 'Drug Interaction Checker',
+    interactionFilterPlaceholder: 'Filter database medicines (e.g. Dolo, Crocin, Azithral)...',
     checkInteraction: 'Check Interaction',
+    checkingInteraction: 'Checking interaction...',
+    med1Placeholder: 'First medicine or salt (e.g. Aspirin, Dolo 650)',
+    med2Placeholder: 'Second medicine or salt (e.g. Ibuprofen, Alcohol)',
+    interactionSameDrug: 'Please enter two different medicines or salts.',
     interactionDanger1: 'Dangerous Interaction: May increase risk of stomach bleeding and ulcers. Consult a doctor.',
     interactionDanger2: 'High Risk: Risk of lactic acidosis. Do not take together.',
     interactionSafe: 'No Major Interaction Found: Generally safe, but always consult your doctor.',
@@ -187,12 +202,36 @@ export default function App() {
   const [searchLoading, setSearchLoading] = useState(false);
 
   // Interaction Checker state
-  const [med1, setMed1] = useState('Paracetamol 650');
-  const [med2, setMed2] = useState('Azithromycin 500');
+  const [med1, setMed1] = useState('Aspirin 75');
+  const [med2, setMed2] = useState('Ibuprofen 400');
+  const [interactionLoading, setInteractionLoading] = useState(false);
   const [interactionResult, setInteractionResult] = useState<{
     safe: boolean;
-    key: 'interactionDanger1' | 'interactionDanger2' | 'interactionSafe';
+    severity?: 'major' | 'moderate' | 'minor';
+    text: string;
+    advice?: string;
   } | null>(null);
+  const [interactionFilter, setInteractionFilter] = useState('');
+  const [interactionMeds, setInteractionMeds] = useState<any[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const list = await fetchMedicinesForInteraction(interactionFilter);
+        if (active && Array.isArray(list)) {
+          setInteractionMeds(list);
+        }
+      } catch {
+        if (active) setInteractionMeds([]);
+      }
+    }, 200);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [interactionFilter]);
 
   // Report Fake state
   const [chemistName, setChemistName] = useState('');
@@ -367,14 +406,72 @@ export default function App() {
     setSearchLoading(false);
   };
 
-  const handleInteractionCheck = () => {
-    const pair = [med1, med2].sort().join('+');
-    if (pair.includes('Aspirin') && pair.includes('Ibuprofen')) {
-      setInteractionResult({ safe: false, key: 'interactionDanger1' });
-    } else if (pair.includes('Metformin') && pair.includes('Alcohol')) {
-      setInteractionResult({ safe: false, key: 'interactionDanger2' });
-    } else {
-      setInteractionResult({ safe: true, key: 'interactionSafe' });
+  const resolveSaltForInput = async (rawInput: string): Promise<string> => {
+    const clean = sanitizeInput(rawInput.trim());
+    if (!clean) return '';
+    if (
+      clean.length >= 3 &&
+      !/^(alcohol|aspirin|ibuprofen|paracetamol|metformin|azithromycin|atorvastatin|clopidogrel|omeprazole|amlodipine|telmisartan|warfarin)$/i.test(
+        clean
+      )
+    ) {
+      try {
+        const matches = await searchMedicines(clean);
+        if (Array.isArray(matches) && matches.length > 0) {
+          const salt =
+            matches[0].short_composition1 ||
+            matches[0].salt_composition ||
+            matches[0].short_composition;
+          if (salt) return salt;
+        }
+      } catch {
+        // Fallback to raw input normalization
+      }
+    }
+    return clean;
+  };
+
+  const handleInteractionCheck = async () => {
+    const a = med1.trim();
+    const b = med2.trim();
+    if (!a || !b) return;
+
+    if (a.toLowerCase() === b.toLowerCase()) {
+      setInteractionResult({ safe: false, text: t.interactionSameDrug });
+      return;
+    }
+
+    setInteractionLoading(true);
+    setInteractionResult(null);
+
+    try {
+      const [saltA, saltB] = await Promise.all([
+        resolveSaltForInput(a),
+        resolveSaltForInput(b),
+      ]);
+
+      const hit = await checkDrugInteraction(saltA, saltB);
+
+      if (hit) {
+        setInteractionResult({
+          safe: false,
+          severity: hit.severity,
+          text: lang === 'hi' ? hit.summary_hi : hit.summary_en,
+          advice: lang === 'hi' ? hit.advice_hi : hit.advice_en,
+        });
+      } else {
+        setInteractionResult({
+          safe: true,
+          text: t.interactionSafe,
+        });
+      }
+    } catch {
+      setInteractionResult({
+        safe: true,
+        text: t.interactionSafe,
+      });
+    } finally {
+      setInteractionLoading(false);
     }
   };
 
@@ -647,34 +744,79 @@ export default function App() {
                   {t.interactionTitle}
                 </h3>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+
+              <input
+                type="text"
+                value={interactionFilter}
+                onChange={(e) => setInteractionFilter(e.target.value)}
+                placeholder={t.interactionFilterPlaceholder}
+                className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+
+              <div className="grid grid-cols-1 gap-2">
                 <select
+                  aria-label="First medicine"
                   value={med1}
                   onChange={(e) => setMed1(e.target.value)}
-                  className="text-xs border border-slate-300 rounded-lg p-2 bg-slate-50"
+                  className="text-xs border border-slate-300 rounded-lg p-2.5 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option>Paracetamol 650</option>
-                  <option>Aspirin 75</option>
-                  <option>Metformin 500</option>
-                  <option>Amlodipine 5</option>
+                  <option value="Aspirin 75">Aspirin 75</option>
+                  <option value="Paracetamol 650">Paracetamol 650</option>
+                  <option value="Metformin 500">Metformin 500</option>
+                  <option value="Amlodipine 5">Amlodipine 5</option>
+                  <option value="Ibuprofen 400">Ibuprofen 400</option>
+                  <option value="Azithromycin 500">Azithromycin 500</option>
+                  <option value="Atorvastatin 10">Atorvastatin 10</option>
+                  <option value="Clopidogrel 75">Clopidogrel 75</option>
+                  <option value="Omeprazole 20">Omeprazole 20</option>
+                  <option value="Telmisartan 40">Telmisartan 40</option>
+                  <option value="Warfarin 5">Warfarin 5</option>
+                  <option value="Alcohol">Alcohol</option>
+                  {interactionMeds.map((m: any, i: number) => (
+                    <option key={`m1-${m.id ?? i}`} value={m.name}>
+                      {m.name}
+                      {m.short_composition1 ? ` (${m.short_composition1})` : ''}
+                    </option>
+                  ))}
                 </select>
+
                 <select
+                  aria-label="Second medicine"
                   value={med2}
                   onChange={(e) => setMed2(e.target.value)}
-                  className="text-xs border border-slate-300 rounded-lg p-2 bg-slate-50"
+                  className="text-xs border border-slate-300 rounded-lg p-2.5 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option>Azithromycin 500</option>
-                  <option>Ibuprofen 400</option>
-                  <option>Alcohol</option>
-                  <option>Pantoprazole 40</option>
+                  <option value="Ibuprofen 400">Ibuprofen 400</option>
+                  <option value="Azithromycin 500">Azithromycin 500</option>
+                  <option value="Alcohol">Alcohol</option>
+                  <option value="Pantoprazole 40">Pantoprazole 40</option>
+                  <option value="Paracetamol 650">Paracetamol 650</option>
+                  <option value="Aspirin 75">Aspirin 75</option>
+                  <option value="Metformin 500">Metformin 500</option>
+                  <option value="Amlodipine 5">Amlodipine 5</option>
+                  <option value="Atorvastatin 10">Atorvastatin 10</option>
+                  <option value="Clopidogrel 75">Clopidogrel 75</option>
+                  <option value="Omeprazole 20">Omeprazole 20</option>
+                  <option value="Telmisartan 40">Telmisartan 40</option>
+                  <option value="Warfarin 5">Warfarin 5</option>
+                  {interactionMeds.map((m: any, i: number) => (
+                    <option key={`m2-${m.id ?? i}`} value={m.name}>
+                      {m.name}
+                      {m.short_composition1 ? ` (${m.short_composition1})` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
+
               <button
+                type="button"
+                disabled={interactionLoading}
                 onClick={handleInteractionCheck}
-                className="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-lg hover:bg-slate-800 transition"
+                className="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-lg hover:bg-slate-800 transition disabled:opacity-50"
               >
-                {t.checkInteraction}
+                {interactionLoading ? t.checkingInteraction : t.checkInteraction}
               </button>
+
               {interactionResult && (
                 <div
                   className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 ${
@@ -688,7 +830,14 @@ export default function App() {
                   ) : (
                     <XCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
                   )}
-                  <span>{t[interactionResult.key]}</span>
+                  <div className="space-y-1">
+                    <div>{interactionResult.text}</div>
+                    {interactionResult.advice && (
+                      <div className="text-[11px] opacity-90">
+                        {interactionResult.advice}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </section>
