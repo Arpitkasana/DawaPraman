@@ -617,5 +617,4 @@ export default function App() {
     </div>
   );
 }
-export { App };
 ```
