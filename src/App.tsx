@@ -1,4 +1,3 @@
-```tsx
 import React, { useState } from 'react';
 import {
   ShieldCheck,
@@ -147,8 +146,8 @@ export default function App() {
       return;
     }
 
-    const trackingId = 'MED-2026-' + Math.floor(1000 + Math.random() * 9000);
-    setReportSuccess('Report CDSCO ko bhej di gayi. Tracking ID: ' + trackingId);
+    const trackingId = `MED-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    setReportSuccess(`Report CDSCO ko bhej di gayi. Tracking ID: ${trackingId}`);
     setChemistName('');
     setCity('');
     setReportBatch('');
@@ -165,9 +164,9 @@ export default function App() {
     const res = await verifyMedicine(code);
     let reply = 'Verify Nahi Ho Payi (Server offline ya batch nahi mila).';
     if (res.status === 'green') {
-      reply = 'ASLI DAWAI: ' + res.medicine + ' (Exp: ' + res.exp + ')';
+      reply = `ASLI DAWAI: ${res.medicine} (Exp: ${res.exp})`;
     } else if (res.status === 'red') {
-      reply = 'NAKLI / RECALLED: Is dawai ko mat lein! (' + (res.details || 'CDSCO Alert') + ')';
+      reply = `NAKLI / RECALLED: Is dawai ko mat lein! (${res.details || 'CDSCO Alert'})`;
     }
 
     setWaMessages((prev) => [...prev, { from: 'bot', text: reply }]);
@@ -293,10 +292,11 @@ export default function App() {
               </button>
               {interactionResult && (
                 <div
-                  className={'p-3 rounded-xl text-xs font-medium flex items-start gap-2 ' + (interactionResult.safe ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200')}
+                  className={`p-3 rounded-xl text-xs font-medium flex items-start gap-2 ${
+                    interactionResult.safe
                       ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                       : 'bg-red-50 text-red-800 border border-red-200'
-                  }'}
+                  }`}
                 >
                   {interactionResult.safe ? (
                     <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
@@ -564,10 +564,11 @@ export default function App() {
               {waMessages.map((m, i) => (
                 <div
                   key={i}
-                  className={'p-2.5 rounded-xl text-xs max-w-[85%] + (
+                  className={`p-2.5 rounded-xl text-xs max-w-[85%] ${
                     m.from === 'user'
                       ? 'bg-emerald-600 text-white ml-auto'
-                      : 'bg-white text-slate-800 border border-slate-200')}
+                      : 'bg-white text-slate-800 border border-slate-200'
+                  }`}
                 >
                   {m.text}
                 </div>
@@ -606,7 +607,9 @@ export default function App() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id as Tab)}
-              className={'flex flex-col items-center gap-0.5 py-1 rounded-lg transition ' + (active ? 'text-emerald-600 font-bold' : 'text-slate-400')}
+              className={`flex flex-col items-center gap-0.5 py-1 rounded-lg transition ${
+                active ? 'text-emerald-600 font-bold' : 'text-slate-400'
+              }`}
             >
               <Icon className="w-5 h-5" />
               <span className="text-[10px]">{item.label}</span>
@@ -617,4 +620,3 @@ export default function App() {
     </div>
   );
 }
-```
