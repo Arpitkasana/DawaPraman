@@ -5,17 +5,22 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function sanitizeOrTerm(input: string): string {
+  // Strip characters that break PostgREST .or(...) filter syntax
+  return input.replace(/[,()]/g, " ").replace(/\s+/g, " ").trim();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    // ✅ FIX 1: GET (?q=) aur POST (body) dono se query lo
     const url = new URL(req.url);
     const qParam = url.searchParams.get("q") || url.searchParams.get("query") || "";
     const body = await req.json().catch(() => ({}));
-    const query = (typeof body.query === "string" ? body.query : qParam).trim();
+    const rawQuery = typeof body.query === "string" ? body.query : qParam;
+    const query = sanitizeOrTerm(rawQuery.trim());
 
     if (!query) {
       return new Response(
@@ -24,30 +29,50 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    // ✅ FIX 2: Sahi column naam - underscore wale
+    if (!supabaseUrl || !serviceRoleKey) {
+      return new Response(
+        JSON.stringify({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in Edge Function env" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
     const { data, error } = await supabase
       .from("medicines")
       .select(
         "id, name, price_inr, is_discontinued, manufacturer_name, pack_size_label, short_composition1, short_composition2"
       )
-      .or(`name.ilike.%${query}%,short_composition1.ilike.%${query}%,short_composition2.ilike.%${query}%`)
+      .or(
+        `name.ilike.%${query}%,short_composition1.ilike.%${query}%,short_composition2.ilike.%${query}%`
+      )
       .limit(20);
 
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase query error:", error);
+      return new Response(
+        JSON.stringify({
+          error: error.message,
+          code: error.code ?? null,
+          details: error.details ?? null,
+          hint: error.hint ?? null,
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     return new Response(JSON.stringify(data ?? []), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
+    console.error("Unhandled search-medicines error:", e);
     const message = e instanceof Error ? e.message : "Unexpected error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });
