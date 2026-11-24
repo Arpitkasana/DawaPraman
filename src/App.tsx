@@ -127,6 +127,25 @@ export default function App() {
     setScanLoading(false);
   };
 
+  const handleSelectMedicineForVerify = async (med: any) => {
+    const code = (med?.batch_no || '').toString().trim().toUpperCase();
+    setActiveTab('scan');
+
+    if (!code) {
+      setBatchNo('');
+      setScanResult(null);
+      setScanError(
+        lang === 'hi'
+          ? `${med?.name || 'Is dawai'} ka Batch Number record me nahi hai — packet se manually daalein.`
+          : `No batch number on record for ${med?.name || 'this medicine'} — enter it manually from the strip.`
+      );
+      return;
+    }
+
+    setBatchNo(code);
+    await handleVerify(undefined, code);
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = sanitizeInput(searchQuery.trim());
@@ -615,20 +634,47 @@ export default function App() {
             <div className="space-y-2.5">
               {searchResults.map((med, idx) => (
                 <div
-                  key={med.id ?? idx}
-                  className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"
+                  key={med.batch_no ? `${med.name}-${med.batch_no}` : `${med.name}-${idx}`}
+                  onClick={() => handleSelectMedicineForVerify(med)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleSelectMedicineForVerify(med);
+                    }
+                  }}
+                  className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-emerald-400 transition cursor-pointer flex items-center justify-between gap-3"
                 >
-                  <div className="font-bold text-slate-900 text-sm">
-                    {med.name}
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-900 text-sm truncate">
+                      {med.name}
+                    </div>
+                    <div className="text-xs text-emerald-700 font-medium mt-0.5">
+                      {med.short_composition1}
+                      {med.price_inr != null ? ` • ₹${med.price_inr}` : ''}
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      {med.manufacturer_name}
+                      {med.pack_size_label ? ` • ${med.pack_size_label}` : ''}
+                    </div>
+                    {med.batch_no && (
+                      <div className="mt-1.5 inline-block text-[10px] font-mono font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded">
+                        Batch: {med.batch_no}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-emerald-700 font-medium mt-0.5">
-                    {med.short_composition1}
-                    {med.price_inr != null ? ` • ₹${med.price_inr}` : ''}
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    {med.manufacturer_name}
-                    {med.pack_size_label ? ` • ${med.pack_size_label}` : ''}
-                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectMedicineForVerify(med);
+                    }}
+                    className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition"
+                  >
+                    {lang === 'hi' ? 'Batch Verify' : 'Verify Batch'}
+                  </button>
                 </div>
               ))}
             </div>
