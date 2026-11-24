@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ShieldCheck,
   QrCode,
@@ -9,6 +9,7 @@ import {
   X,
   Send,
   Camera,
+  CameraOff,
   CheckCircle2,
   XCircle,
   Info,
@@ -18,6 +19,7 @@ import {
   FileText,
   ExternalLink,
 } from 'lucide-react';
+import { Html5Qrcode } from 'html5-qrcode';
 import {
   verifyMedicine,
   searchMedicines,
@@ -30,6 +32,7 @@ import VerifiedCard from './components/VerifiedCard';
 type Tab = 'home' | 'scan' | 'search' | 'report';
 
 const BANNED_DRUGS_PDF_URL = '/banneddrugs.pdf';
+const QR_READER_ELEMENT_ID = 'dawapraman-qr-reader';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home');
@@ -38,12 +41,14 @@ export default function App() {
   );
   const [showBannedPdf, setShowBannedPdf] = useState(false);
 
-  // Scan state
+  // Scan & Camera QR state
   const [batchNo, setBatchNo] = useState('');
   const [mrpPaid, setMrpPaid] = useState('');
   const [scanLoading, setScanLoading] = useState(false);
   const [scanResult, setScanResult] = useState<any>(null);
   const [scanError, setScanError] = useState('');
+  const [cameraActive, setCameraActive] = useState(false);
+  const qrScannerRef = useRef<Html5Qrcode | null>(null);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,6 +86,36 @@ export default function App() {
     };
   }, [interactionFilter]);
 
+  const stopCameraScanner = async () => {
+    const scanner = qrScannerRef.current;
+    qrScannerRef.current = null;
+    setCameraActive(false);
+    if (scanner) {
+      try {
+        await scanner.stop();
+      } catch {
+        // Ignore if already stopped
+      }
+      try {
+        scanner.clear();
+      } catch {
+        // Ignore clear errors
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'scan' && cameraActive) {
+      stopCameraScanner();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    return () => {
+      stopCameraScanner();
+    };
+  }, []);
+
   // Report Fake state
   const [chemistName, setChemistName] = useState('');
   const [city, setCity] = useState('');
@@ -106,6 +141,18 @@ export default function App() {
     sessionStorage.setItem('lang', next);
   };
 
+  const extractBatchFromQr = (decodedText: string): string => {
+    const cleaned = decodedText.trim();
+    const batchParamMatch = cleaned.match(
+      /(?:batch(?:_?no)?|bn|lot)[=:/\s-]+([A-Z0-9-]{4,24})/i
+    );
+    if (batchParamMatch?.[1]) {
+      return batchParamMatch[1].toUpperCase();
+    }
+    const tokenMatch = cleaned.toUpperCase().match(/[A-Z0-9-]{4,24}/);
+    return tokenMatch ? tokenMatch[0] : cleaned.toUpperCase();
+  };
+
   const handleVerify = async (e?: React.FormEvent, customBatch?: string) => {
     if (e) e.preventDefault();
     const targetBatch = (customBatch ?? batchNo).trim().toUpperCase();
@@ -125,6 +172,42 @@ export default function App() {
     const res = await verifyMedicine(targetBatch);
     setScanResult(res);
     setScanLoading(false);
+  };
+
+  const startCameraScanner = async () => {
+    setScanError('');
+    setScanResult(null);
+    await stopCameraScanner();
+    setCameraActive(true);
+
+    // Wait one tick so the QR_READER_ELEMENT_ID container is visible in the DOM
+    setTimeout(async () => {
+      try {
+        const scanner = new Html5Qrcode(QR_READER_ELEMENT_ID);
+        qrScannerRef.current = scanner;
+
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 200, height: 200 } },
+          async (decodedText) => {
+            const extracted = extractBatchFromQr(decodedText);
+            await stopCameraScanner();
+            setBatchNo(extracted);
+            await handleVerify(undefined, extracted);
+          },
+          () => {
+            // Ignore per-frame scan misses
+          }
+        );
+      } catch {
+        await stopCameraScanner();
+        setScanError(
+          lang === 'hi'
+            ? 'Camera access nahi mil paya. Browser permission allow karein ya neeche Batch Number manually daalein.'
+            : 'Unable to access camera. Allow camera permission or enter the Batch Number manually below.'
+        );
+      }
+    }, 50);
   };
 
   const handleSelectMedicineForVerify = async (med: any) => {
@@ -325,7 +408,10 @@ export default function App() {
 
               <div className="grid grid-cols-1 gap-2.5 mt-4">
                 <button
-                  onClick={() => setActiveTab('scan')}
+                  onClick={() => {
+                    setActiveTab('scan');
+                    startCameraScanner();
+                  }}
                   className="w-full bg-white text-emerald-700 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow hover:bg-emerald-50 transition"
                 >
                   <Camera className="w-5 h-5" />
@@ -436,7 +522,7 @@ export default function App() {
                   <option value="Metformin 500">Metformin 500</option>
                   <option value="Amlodipine 5">Amlodipine 5</option>
                   {interactionMeds.map((m: any, idx: number) => (
-                    <option key={`m1-${m.id ?? idx}`} value={m.name}>
+                    <option key={`m1-${m.batch_no ?? idx}`} value={m.name}>
                       {m.name}
                       {m.short_composition1 ? ` (${m.short_composition1})` : ''}
                     </option>
@@ -453,7 +539,7 @@ export default function App() {
                   <option value="Alcohol">Alcohol</option>
                   <option value="Pantoprazole 40">Pantoprazole 40</option>
                   {interactionMeds.map((m: any, idx: number) => (
-                    <option key={`m2-${m.id ?? idx}`} value={m.name}>
+                    <option key={`m2-${m.batch_no ?? idx}`} value={m.name}>
                       {m.name}
                       {m.short_composition1 ? ` (${m.short_composition1})` : ''}
                     </option>
@@ -504,19 +590,54 @@ export default function App() {
         {/* SCAN & VERIFY TAB */}
         {activeTab === 'scan' && (
           <div className="space-y-4">
-            <div className="bg-slate-900 rounded-2xl p-6 text-center text-white relative overflow-hidden">
-              <div className="w-40 h-40 mx-auto border-2 border-emerald-400 rounded-xl flex flex-col items-center justify-center bg-slate-800/60">
-                <QrCode className="w-12 h-12 text-emerald-400 mb-2" />
-                <span className="text-[11px] text-slate-300">
-                  CDSCO QR Frame
-                </span>
-              </div>
-              <button
-                onClick={() => handleVerify(undefined, 'DOLO2026A')}
-                className="mt-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 px-4 rounded-lg transition"
-              >
-                Test Backend Verify (DOLO2026A)
-              </button>
+            <div className="bg-slate-900 rounded-2xl p-5 text-center text-white relative overflow-hidden">
+              {cameraActive ? (
+                <div className="space-y-3">
+                  <div
+                    id={QR_READER_ELEMENT_ID}
+                    className="w-full max-w-[260px] mx-auto rounded-xl overflow-hidden border-2 border-emerald-400 bg-black"
+                  />
+                  <p className="text-[11px] text-emerald-200">
+                    {lang === 'hi'
+                      ? 'Dawai ke packet ka QR code frame ke andar rakhein...'
+                      : 'Point camera at the QR code on the medicine strip...'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={stopCameraScanner}
+                    className="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2 px-4 rounded-lg transition"
+                  >
+                    <CameraOff className="w-4 h-4" />
+                    {lang === 'hi' ? 'Camera Band Karein' : 'Stop Camera'}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="w-40 h-40 mx-auto border-2 border-emerald-400 rounded-xl flex flex-col items-center justify-center bg-slate-800/60">
+                    <QrCode className="w-12 h-12 text-emerald-400 mb-2" />
+                    <span className="text-[11px] text-slate-300">
+                      CDSCO QR Frame
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+                    <button
+                      type="button"
+                      onClick={startCameraScanner}
+                      className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 px-4 rounded-lg transition"
+                    >
+                      <Camera className="w-4 h-4" />
+                      {lang === 'hi' ? 'Camera QR Scan Karein' : 'Scan QR with Camera'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleVerify(undefined, 'DOLO2026A')}
+                      className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold py-2.5 px-3 rounded-lg transition"
+                    >
+                      Test (DOLO2026A)
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
             <form
