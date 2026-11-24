@@ -11,6 +11,8 @@ const jsonHeaders = {
   "Content-Type": "application/json",
 };
 
+const BATCH_REGEX = /^[A-Z0-9-]{4,24}$/;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -24,6 +26,16 @@ serve(async (req) => {
     if (!batchNo) {
       return new Response(
         JSON.stringify({ status: "yellow", message: "Batch number is required" }),
+        { status: 400, headers: jsonHeaders }
+      );
+    }
+
+    if (!BATCH_REGEX.test(batchNo)) {
+      return new Response(
+        JSON.stringify({
+          status: "yellow",
+          message: "Invalid batch number format (4-24 alphanumeric characters)",
+        }),
         { status: 400, headers: jsonHeaders }
       );
     }
@@ -65,7 +77,7 @@ serve(async (req) => {
         JSON.stringify({
           status: "red",
           message: "Batch recalled by CDSCO",
-          details: recall.reason,
+          details: recall.reason || "Listed in CDSCO recall records",
         }),
         { status: 200, headers: jsonHeaders }
       );
@@ -89,7 +101,7 @@ serve(async (req) => {
       );
     }
 
-    if (!batch || batch.is_genuine === false) {
+    if (!batch) {
       return new Response(
         JSON.stringify({
           status: "yellow",
@@ -99,15 +111,31 @@ serve(async (req) => {
       );
     }
 
+    if (batch.is_genuine === false) {
+      return new Response(
+        JSON.stringify({
+          status: "red",
+          message: "Batch flagged as non-genuine in manufacturer records",
+          details: batch.notes || "Do not consume this medicine; report to CDSCO.",
+        }),
+        { status: 200, headers: jsonHeaders }
+      );
+    }
+
     // 3. Look up medicine details separately if medicine_id is present
     let medRecord: Record<string, any> | null = null;
     if (batch.medicine_id !== undefined && batch.medicine_id !== null) {
-      const { data: med } = await supabase
+      const { data: med, error: medError } = await supabase
         .from("medicines")
         .select("*")
         .eq("id", batch.medicine_id)
         .maybeSingle();
-      medRecord = med;
+
+      if (medError) {
+        console.error("medicines lookup error:", medError);
+      } else {
+        medRecord = med;
+      }
     }
 
     // 4. Generate signed verification token
@@ -139,7 +167,18 @@ serve(async (req) => {
       JSON.stringify({
         status: "green",
         medicineId: batch.medicine_id ?? medRecord?.id,
+        batch_no: batch.batch_no ?? batchNo,
         medicine: medicineName,
+        manufacturer:
+          medRecord?.manufacturer_name ??
+          medRecord?.manufacturer ??
+          batch.manufacturer_name ??
+          "",
+        salt_composition:
+          medRecord?.short_composition1 ??
+          medRecord?.salt_composition ??
+          "",
+        price: medRecord?.price_inr ?? medRecord?.price ?? null,
         mfg: batch.mfg_date,
         exp: batch.exp_date,
         secureMeta: {
@@ -150,10 +189,10 @@ serve(async (req) => {
       { status: 200, headers: jsonHeaders }
     );
   } catch (err) {
-    console.error("verify-medicine unhandled error:", err);
+    console.error("verify-medicines unhandled error:", err);
     return new Response(
-      JSON.stringify({ status: "yellow", message: "Invalid request payload" }),
-      { status: 400, headers: jsonHeaders }
+      JSON.stringify({ status: "yellow", message: "Unable to complete verification right now" }),
+      { status: 500, headers: jsonHeaders }
     );
   }
 });
