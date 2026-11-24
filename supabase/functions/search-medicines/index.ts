@@ -1,97 +1,73 @@
-const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string) || '';
-const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const fnHeaders = {
-  'Content-Type': 'application/json',
-  apikey: SUPABASE_ANON_KEY,
-  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-export async function verifyMedicine(batchNo: string) {
+const jsonHeaders = {
+  ...corsHeaders,
+  "Content-Type": "application/json",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-medicines`, {
-      method: 'POST',
-      headers: fnHeaders,
-      body: JSON.stringify({ batchNo }),
+    const body = await req.json().catch(() => ({}));
+    const rawQuery = (body.query ?? body.q ?? "").toString().trim();
+    const safeQuery = rawQuery.replace(/[,()[\]%_]/g, " ").replace(/\s+/g, " ").trim();
+
+    if (safeQuery.length < 2) {
+      return new Response(JSON.stringify({ results: [] }), {
+        status: 200,
+        headers: jsonHeaders,
+      });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || Deno.env.get("PROJECT_URL");
+    const serviceRoleKey =
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("PROJECT_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return new Response(
+        JSON.stringify({ error: "Server configuration missing", results: [] }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const { data, error } = await supabase
+      .from("medicines")
+      .select(
+        "name, price_inr, is_discontinued, manufacturer_name, type, pack_size_label, short_composition1, short_composition2, batch_no, mfg_date, exp_date, nppa_ceiling_price"
+      )
+      .or(
+        `name.ilike.%${safeQuery}%,short_composition1.ilike.%${safeQuery}%,short_composition2.ilike.%${safeQuery}%`
+      )
+      .limit(20);
+
+    if (error) {
+      console.error("search-medicines query error:", error);
+      return new Response(
+        JSON.stringify({ error: error.message, results: [] }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
+
+    return new Response(JSON.stringify({ results: data ?? [] }), {
+      status: 200,
+      headers: jsonHeaders,
     });
-    return await res.json();
-  } catch {
-    return {
-      status: 'yellow',
-      message: 'Unable to reach verification server.',
-    };
+  } catch (err) {
+    console.error("search-medicines unhandled error:", err);
+    return new Response(
+      JSON.stringify({ error: "Invalid request or server error", results: [] }),
+      { status: 500, headers: jsonHeaders }
+    );
   }
-}
-
-export async function searchMedicines(query: string) {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/search-medicines`, {
-    method: 'POST',
-    headers: fnHeaders,
-    body: JSON.stringify({ query }),
-  });
-  const data = await res.json();
-  return Array.isArray(data) ? data : data?.results ?? data?.medicines ?? [];
-}
-
-export function normalizeSalt(raw: string): string {
-  const primarySegment = raw.split(/[+/]/)[0] ?? raw;
-  return primarySegment
-    .toUpperCase()
-    .replace(/\([^)]*\)/g, ' ')
-    .replace(/\b\d+(?:\.\d+)?\s*(?:MG|MCG|G|GM|ML|IU|%)\b/g, ' ')
-    .replace(
-      /\b(?:TABLET|TABLETS|TAB|CAPSULE|CAPSULES|CAP|SYRUP|INJECTION|INJ|DROPS|OINTMENT|CREAM|GEL|SR|ER|XR|DS|PLUS|FORTE|IP|USP|BP)\b/g,
-      ' '
-    )
-    .replace(/[^A-Z0-9\s-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-export function buildPairKey(drugA: string, drugB: string): string {
-  const [first, second] = [normalizeSalt(drugA), normalizeSalt(drugB)].sort();
-  return `${first}|${second}`;
-}
-
-export async function checkDrugInteraction(medA: string, medB: string) {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
-  const pairKey = buildPairKey(medA, medB);
-
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/drug_interactions?pair_key=eq.${encodeURIComponent(
-      pairKey
-    )}&select=*`,
-    {
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-    }
-  );
-
-  if (!res.ok) return null;
-  const rows = await res.json();
-  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
-}
-
-export async function fetchMedicinesForInteraction(query = '') {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return [];
-  const clean = query.trim();
-  if (clean.length >= 2) {
-    return await searchMedicines(clean);
-  }
-
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/medicines?select=id,name,short_composition1,short_composition2&limit=50`,
-    {
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-    }
-  );
-
-  if (!res.ok) return [];
-  const rows = await res.json();
-  return Array.isArray(rows) ? rows : [];
-}
+});
