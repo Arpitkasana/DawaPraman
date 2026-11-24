@@ -33,9 +33,9 @@ Deno.serve(async (req) => {
     const { data, error } = await supabase
       .from("medicines")
       .select(
-        "id, name, price_inr, is_discontinued, manufacturer_name, pack_size_label, short_composition_1, short_composition_2"
+        "id, name, price_inr, is_discontinued, manufacturer_name, pack_size_label, short_composition1, short_composition2"
       )
-      .or(`name.ilike.%${query}%,short_composition_1.ilike.%${query}%,short_composition_2.ilike.%${query}%`)
+      .or(`name.ilike.%${query}%,short_composition1.ilike.%${query}%,short_composition2.ilike.%${query}%`)
       .limit(20);
 
     if (error) throw error;
