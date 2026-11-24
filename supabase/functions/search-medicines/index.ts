@@ -1,3 +1,4 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -5,49 +6,153 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-Deno.serve(async (req) => {
+const jsonHeaders = {
+  ...corsHeaders,
+  "Content-Type": "application/json",
+};
+
+serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    // ✅ FIX 1: GET (?q=) aur POST (body) dono se query lo
-    const url = new URL(req.url);
-    const qParam = url.searchParams.get("q") || url.searchParams.get("query") || "";
     const body = await req.json().catch(() => ({}));
-    const query = (typeof body.query === "string" ? body.query : qParam).trim();
+    const rawQuery = (body.query ?? body.q ?? "").toString().trim();
 
-    if (!query) {
+    if (rawQuery.length < 2) {
+      return new Response(JSON.stringify({ results: [] }), {
+        status: 200,
+        headers: jsonHeaders,
+      });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || Deno.env.get("PROJECT_URL");
+    const serviceRoleKey =
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("PROJECT_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !serviceRoleKey) {
       return new Response(
-        JSON.stringify({ error: "Search query is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Server configuration missing", results: [] }),
+        { status: 500, headers: jsonHeaders }
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const safeTerm = rawQuery.replace(/[%_,]/g, "");
+    const safePattern = `%${safeTerm}%`;
 
-    // ✅ FIX 2: Sahi column naam - underscore wale
-    const { data, error } = await supabase
+    // Support the richer medicine-catalog schema used by existing deployments.
+    const catalogResult = await supabase
       .from("medicines")
-      .select(
-        "id, name, price_inr, is_discontinued, manufacturer_name, pack_size_label, short_composition_1, short_composition_2"
+      .select("*")
+      .or(
+        `name.ilike.${safePattern},batch_no.ilike.${safePattern},salt_composition.ilike.${safePattern},short_composition_1.ilike.${safePattern}`
       )
-      .or(`name.ilike.%${query}%,short_composition_1.ilike.%${query}%,short_composition_2.ilike.%${query}%`)
-      .limit(20);
+      .limit(25);
 
-    if (error) throw error;
+    if (!catalogResult.error) {
+      return new Response(JSON.stringify({ results: catalogResult.data ?? [] }), {
+        status: 200,
+        headers: jsonHeaders,
+      });
+    }
 
-    return new Response(JSON.stringify(data ?? []), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // The checked-in schema uses medicines(brand_name, salt, strength) and stores
+    // batch numbers separately. Fall back to that schema instead of querying
+    // columns that do not exist there.
+    const [medicineResult, batchResult] = await Promise.all([
+      supabase
+        .from("medicines")
+        .select("id, brand_name, salt, strength")
+        .or(`brand_name.ilike.${safePattern},salt.ilike.${safePattern},strength.ilike.${safePattern}`)
+        .limit(25),
+      supabase
+        .from("batches")
+        .select("id, medicine_id, batch_no, mfg_date, exp_date")
+        .ilike("batch_no", safePattern)
+        .limit(25),
+    ]);
+
+    if (medicineResult.error || batchResult.error) {
+      const error = medicineResult.error ?? batchResult.error;
+      console.error("search-medicines query error:", error);
+      return new Response(
+        JSON.stringify({ error: error.message, results: [] }),
+        { status: 500, headers: jsonHeaders }
+      );
+    }
+
+    const medicinesById = new Map(
+      (medicineResult.data ?? []).map((medicine: any) => [medicine.id, medicine])
+    );
+    const batchMedicineIds = [...new Set(
+      (batchResult.data ?? [])
+        .map((batch: any) => batch.medicine_id)
+        .filter((id: string | null) => id != null && !medicinesById.has(id))
+    )];
+
+    if (batchMedicineIds.length > 0) {
+      const { data, error } = await supabase
+        .from("medicines")
+        .select("id, brand_name, salt, strength")
+        .in("id", batchMedicineIds);
+      if (error) {
+        console.error("search-medicines batch lookup error:", error);
+        return new Response(
+          JSON.stringify({ error: error.message, results: [] }),
+          { status: 500, headers: jsonHeaders }
+        );
+      }
+      for (const medicine of data ?? []) medicinesById.set(medicine.id, medicine);
+    }
+
+    const legacyResults = (medicineResult.data ?? []).map((medicine: any) => {
+      const batch = (batchResult.data ?? []).find(
+        (candidate: any) => candidate.medicine_id === medicine.id
+      );
+      return {
+        ...medicine,
+        name: medicine.brand_name,
+        salt_composition: medicine.salt,
+        short_composition_1: medicine.salt,
+        batch_no: batch?.batch_no ?? null,
+        mfg_date: batch?.mfg_date ?? null,
+        exp_date: batch?.exp_date ?? null,
+      };
     });
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "Unexpected error";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+
+    const matchedBatchResults = (batchResult.data ?? [])
+      .filter((batch: any) => batch.medicine_id != null)
+      .map((batch: any) => {
+        const medicine: any = medicinesById.get(batch.medicine_id);
+        if (!medicine) return null;
+        return {
+          ...medicine,
+          name: medicine.brand_name,
+          salt_composition: medicine.salt,
+          short_composition_1: medicine.salt,
+          batch_no: batch.batch_no,
+          mfg_date: batch.mfg_date,
+          exp_date: batch.exp_date,
+        };
+      })
+      .filter(Boolean);
+
+    const uniqueResults = new Map<string, any>();
+    for (const result of [...legacyResults, ...matchedBatchResults]) {
+      uniqueResults.set(`${result.id}:${result.batch_no ?? ""}`, result);
+    }
+
+    return new Response(JSON.stringify({ results: [...uniqueResults.values()].slice(0, 25) }), {
+      status: 200,
+      headers: jsonHeaders,
     });
+  } catch (err) {
+    console.error("search-medicines unhandled error:", err);
+    return new Response(
+      JSON.stringify({ error: "Invalid request", results: [] }),
+      { status: 400, headers: jsonHeaders }
+    );
   }
 });
