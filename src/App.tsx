@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ShieldCheck,
   QrCode,
@@ -18,13 +18,18 @@ import {
   FileText,
   ExternalLink,
 } from 'lucide-react';
-import { verifyMedicine, searchMedicines } from './services/api';
+import {
+  verifyMedicine,
+  searchMedicines,
+  checkDrugInteraction,
+  fetchMedicinesForInteraction,
+} from './services/api';
 import { validators, sanitizeInput } from './lib/validation';
 import VerifiedCard from './components/VerifiedCard';
 
 type Tab = 'home' | 'scan' | 'search' | 'report';
 
-const BANNED_DRUGS_PDF_URL = '/banned-drugs.pdf';
+const BANNED_DRUGS_PDF_URL = '/banneddrugs.pdf';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home');
@@ -48,10 +53,33 @@ export default function App() {
   // Interaction Checker state
   const [med1, setMed1] = useState('Paracetamol 650');
   const [med2, setMed2] = useState('Azithromycin 500');
+  const [interactionFilter, setInteractionFilter] = useState('');
+  const [interactionMeds, setInteractionMeds] = useState<any[]>([]);
+  const [interactionLoading, setInteractionLoading] = useState(false);
   const [interactionResult, setInteractionResult] = useState<{
     safe: boolean;
     text: string;
+    advice?: string;
   } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const list = await fetchMedicinesForInteraction(interactionFilter);
+        if (active && Array.isArray(list)) {
+          setInteractionMeds(list);
+        }
+      } catch {
+        if (active) setInteractionMeds([]);
+      }
+    }, 200);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [interactionFilter]);
 
   // Report Fake state
   const [chemistName, setChemistName] = useState('');
@@ -113,23 +141,74 @@ export default function App() {
     setSearchLoading(false);
   };
 
-  const handleInteractionCheck = () => {
-    const pair = [med1, med2].sort().join('+');
-    if (pair.includes('Aspirin') && pair.includes('Ibuprofen')) {
+  const resolveSaltForInput = async (rawInput: string): Promise<string> => {
+    const clean = sanitizeInput(rawInput.trim());
+    if (!clean) return '';
+    if (clean.length >= 3) {
+      try {
+        const matches = await searchMedicines(clean);
+        if (Array.isArray(matches) && matches.length > 0) {
+          const salt = matches[0].short_composition1 || matches[0].salt;
+          if (salt) return salt;
+        }
+      } catch {
+        // Fall back to raw input
+      }
+    }
+    return clean;
+  };
+
+  const handleInteractionCheck = async () => {
+    const a = med1.trim();
+    const b = med2.trim();
+    if (!a || !b) return;
+
+    if (a.toLowerCase() === b.toLowerCase()) {
       setInteractionResult({
         safe: false,
-        text: 'Dangerous Interaction: Pet me bleeding aur ulcer ka khatra badh sakta hai. Doctor se poochein.',
+        text:
+          lang === 'hi'
+            ? 'Kripya do alag-alag dawaiyan ya salt chunein.'
+            : 'Please select two different medicines or salts.',
       });
-    } else if (pair.includes('Metformin') && pair.includes('Alcohol')) {
-      setInteractionResult({
-        safe: false,
-        text: 'High Risk: Lactic acidosis ka khatra. Ek saath bilkul na lein.',
-      });
-    } else {
+      return;
+    }
+
+    setInteractionLoading(true);
+    setInteractionResult(null);
+
+    try {
+      const [saltA, saltB] = await Promise.all([
+        resolveSaltForInput(a),
+        resolveSaltForInput(b),
+      ]);
+      const hit = await checkDrugInteraction(saltA, saltB);
+
+      if (hit) {
+        setInteractionResult({
+          safe: false,
+          text: lang === 'hi' ? hit.summary_hi : hit.summary_en,
+          advice: lang === 'hi' ? hit.advice_hi : hit.advice_en,
+        });
+      } else {
+        setInteractionResult({
+          safe: true,
+          text:
+            lang === 'hi'
+              ? 'No Major Interaction Found: Aam taur par surakshit hai, par doctor ki salah zaroori hai.'
+              : 'No Major Interaction Found: Generally safe, but always consult your doctor.',
+        });
+      }
+    } catch {
       setInteractionResult({
         safe: true,
-        text: 'No Major Interaction Found: Aam taur par surakshit hai, par doctor ki salah zaroori hai.',
+        text:
+          lang === 'hi'
+            ? 'No Major Interaction Found: Aam taur par surakshit hai, par doctor ki salah zaroori hai.'
+            : 'No Major Interaction Found: Generally safe, but always consult your doctor.',
       });
+    } finally {
+      setInteractionLoading(false);
     }
   };
 
@@ -168,9 +247,9 @@ export default function App() {
 
     const res = await verifyMedicine(code);
     let reply = 'Verify Nahi Ho Payi (Server offline ya batch nahi mila).';
-    if (res.status === 'green') {
+    if (res?.status === 'green') {
       reply = `ASLI DAWAI: ${res.medicine} (Exp: ${res.exp})`;
-    } else if (res.status === 'red') {
+    } else if (res?.status === 'red') {
       reply = `NAKLI / RECALLED: Is dawai ko mat lein! (${res.details || 'CDSCO Alert'})`;
     }
 
@@ -266,7 +345,7 @@ export default function App() {
                   <FileText className="w-5 h-5 text-red-600 shrink-0" />
                   <div>
                     <h3 className="font-bold text-sm text-slate-800">
-                      {lang === 'hi' ? 'Banned Drugs List (PDF)' : 'Banned Drugs List (PDF)'}
+                      Banned Drugs List (PDF)
                     </h3>
                     <p className="text-[11px] text-slate-500">
                       {lang === 'hi'
@@ -281,13 +360,7 @@ export default function App() {
                     onClick={() => setShowBannedPdf((prev) => !prev)}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition"
                   >
-                    {showBannedPdf
-                      ? lang === 'hi'
-                        ? 'Hide PDF'
-                        : 'Hide PDF'
-                      : lang === 'hi'
-                      ? 'Load PDF'
-                      : 'Load PDF'}
+                    {showBannedPdf ? 'Hide PDF' : 'Load PDF'}
                   </button>
                   <a
                     href={BANNED_DRUGS_PDF_URL}
@@ -323,33 +396,58 @@ export default function App() {
                   Drug Interaction Checker
                 </h3>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+
+              <input
+                type="text"
+                value={interactionFilter}
+                onChange={(e) => setInteractionFilter(e.target.value)}
+                placeholder="Filter database medicines (e.g. Dolo, Crocin, Azithral)..."
+                className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+
+              <div className="grid grid-cols-1 gap-2">
                 <select
+                  aria-label="First medicine"
                   value={med1}
                   onChange={(e) => setMed1(e.target.value)}
                   className="text-xs border border-slate-300 rounded-lg p-2 bg-slate-50"
                 >
-                  <option>Paracetamol 650</option>
-                  <option>Aspirin 75</option>
-                  <option>Metformin 500</option>
-                  <option>Amlodipine 5</option>
+                  <option value="Paracetamol 650">Paracetamol 650</option>
+                  <option value="Aspirin 75">Aspirin 75</option>
+                  <option value="Metformin 500">Metformin 500</option>
+                  <option value="Amlodipine 5">Amlodipine 5</option>
+                  {interactionMeds.map((m: any, idx: number) => (
+                    <option key={`m1-${m.id ?? idx}`} value={m.name}>
+                      {m.name}
+                      {m.short_composition1 ? ` (${m.short_composition1})` : ''}
+                    </option>
+                  ))}
                 </select>
                 <select
+                  aria-label="Second medicine"
                   value={med2}
                   onChange={(e) => setMed2(e.target.value)}
                   className="text-xs border border-slate-300 rounded-lg p-2 bg-slate-50"
                 >
-                  <option>Azithromycin 500</option>
-                  <option>Ibuprofen 400</option>
-                  <option>Alcohol</option>
-                  <option>Pantoprazole 40</option>
+                  <option value="Azithromycin 500">Azithromycin 500</option>
+                  <option value="Ibuprofen 400">Ibuprofen 400</option>
+                  <option value="Alcohol">Alcohol</option>
+                  <option value="Pantoprazole 40">Pantoprazole 40</option>
+                  {interactionMeds.map((m: any, idx: number) => (
+                    <option key={`m2-${m.id ?? idx}`} value={m.name}>
+                      {m.name}
+                      {m.short_composition1 ? ` (${m.short_composition1})` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
               <button
+                type="button"
+                disabled={interactionLoading}
                 onClick={handleInteractionCheck}
-                className="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-lg hover:bg-slate-800 transition"
+                className="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-lg hover:bg-slate-800 transition disabled:opacity-50"
               >
-                Check Interaction
+                {interactionLoading ? 'Checking...' : 'Check Interaction'}
               </button>
               {interactionResult && (
                 <div
@@ -364,7 +462,12 @@ export default function App() {
                   ) : (
                     <XCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
                   )}
-                  <span>{interactionResult.text}</span>
+                  <div className="space-y-1">
+                    <div>{interactionResult.text}</div>
+                    {interactionResult.advice && (
+                      <div className="text-[11px] opacity-90">{interactionResult.advice}</div>
+                    )}
+                  </div>
                 </div>
               )}
             </section>
@@ -510,19 +613,21 @@ export default function App() {
             )}
 
             <div className="space-y-2.5">
-              {searchResults.map((med) => (
+              {searchResults.map((med, idx) => (
                 <div
-                  key={med.id}
+                  key={med.id ?? idx}
                   className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm"
                 >
                   <div className="font-bold text-slate-900 text-sm">
                     {med.name}
                   </div>
                   <div className="text-xs text-emerald-700 font-medium mt-0.5">
-                    {med.short_composition_1} • ₹{med.price_inr}
+                    {med.short_composition1}
+                    {med.price_inr != null ? ` • ₹${med.price_inr}` : ''}
                   </div>
                   <div className="text-[11px] text-slate-500">
-                    {med.manufacturer_name} • {med.pack_size_label}
+                    {med.manufacturer_name}
+                    {med.pack_size_label ? ` • ${med.pack_size_label}` : ''}
                   </div>
                 </div>
               ))}
