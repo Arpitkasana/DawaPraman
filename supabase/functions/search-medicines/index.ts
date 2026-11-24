@@ -1,78 +1,97 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string) || '';
+const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+const fnHeaders = {
+  'Content-Type': 'application/json',
+  apikey: SUPABASE_ANON_KEY,
+  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
 };
 
-function sanitizeOrTerm(input: string): string {
-  // Strip characters that break PostgREST .or(...) filter syntax
-  return input.replace(/[,()]/g, " ").replace(/\s+/g, " ").trim();
+export async function verifyMedicine(batchNo: string) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-medicines`, {
+      method: 'POST',
+      headers: fnHeaders,
+      body: JSON.stringify({ batchNo }),
+    });
+    return await res.json();
+  } catch {
+    return {
+      status: 'yellow',
+      message: 'Unable to reach verification server.',
+    };
+  }
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+export async function searchMedicines(query: string) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/search-medicines`, {
+    method: 'POST',
+    headers: fnHeaders,
+    body: JSON.stringify({ query }),
+  });
+  const data = await res.json();
+  return Array.isArray(data) ? data : data?.results ?? data?.medicines ?? [];
+}
+
+export function normalizeSalt(raw: string): string {
+  const primarySegment = raw.split(/[+/]/)[0] ?? raw;
+  return primarySegment
+    .toUpperCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\b\d+(?:\.\d+)?\s*(?:MG|MCG|G|GM|ML|IU|%)\b/g, ' ')
+    .replace(
+      /\b(?:TABLET|TABLETS|TAB|CAPSULE|CAPSULES|CAP|SYRUP|INJECTION|INJ|DROPS|OINTMENT|CREAM|GEL|SR|ER|XR|DS|PLUS|FORTE|IP|USP|BP)\b/g,
+      ' '
+    )
+    .replace(/[^A-Z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function buildPairKey(drugA: string, drugB: string): string {
+  const [first, second] = [normalizeSalt(drugA), normalizeSalt(drugB)].sort();
+  return `${first}|${second}`;
+}
+
+export async function checkDrugInteraction(medA: string, medB: string) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const pairKey = buildPairKey(medA, medB);
+
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/drug_interactions?pair_key=eq.${encodeURIComponent(
+      pairKey
+    )}&select=*`,
+    {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+    }
+  );
+
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+export async function fetchMedicinesForInteraction(query = '') {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return [];
+  const clean = query.trim();
+  if (clean.length >= 2) {
+    return await searchMedicines(clean);
   }
 
-  try {
-    const url = new URL(req.url);
-    const qParam = url.searchParams.get("q") || url.searchParams.get("query") || "";
-    const body = await req.json().catch(() => ({}));
-    const rawQuery = typeof body.query === "string" ? body.query : qParam;
-    const query = sanitizeOrTerm(rawQuery.trim());
-
-    if (!query) {
-      return new Response(
-        JSON.stringify({ error: "Search query is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/medicines?select=id,name,short_composition1,short_composition2&limit=50`,
+    {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      },
     }
+  );
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return new Response(
-        JSON.stringify({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in Edge Function env" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-
-    const { data, error } = await supabase
-      .from("medicines")
-      .select(
-        "id, name, price_inr, is_discontinued, manufacturer_name, pack_size_label, short_composition1, short_composition2"
-      )
-      .or(
-        `name.ilike.%${query}%,short_composition1.ilike.%${query}%,short_composition2.ilike.%${query}%`
-      )
-      .limit(20);
-
-    if (error) {
-      console.error("Supabase query error:", error);
-      return new Response(
-        JSON.stringify({
-          error: error.message,
-          code: error.code ?? null,
-          details: error.details ?? null,
-          hint: error.hint ?? null,
-        }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    return new Response(JSON.stringify(data ?? []), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (e) {
-    console.error("Unhandled search-medicines error:", e);
-    const message = e instanceof Error ? e.message : "Unexpected error";
-    return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-});
+  if (!res.ok) return [];
+  const rows = await res.json();
+  return Array.isArray(rows) ? rows : [];
+}
