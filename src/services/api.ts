@@ -13,19 +13,58 @@ const restHeaders = {
 };
 
 export async function verifyMedicine(batchNo: string) {
-  try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-medicines`, {
-      method: 'POST',
-      headers: fnHeaders,
-      body: JSON.stringify({ batchNo }),
-    });
-    return await res.json();
-  } catch {
+  const clean = batchNo.trim().toUpperCase();
+  if (!clean || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return {
       status: 'yellow',
-      message: 'Unable to reach verification server.',
+      message: 'Please enter a valid batch number.',
     };
   }
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-medicine`, {
+      method: 'POST',
+      headers: fnHeaders,
+      body: JSON.stringify({ batchNo: clean }),
+    });
+
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // Fall through to REST fallback below
+  }
+
+  try {
+    const restRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/medicines?batch_no=eq.${encodeURIComponent(
+        clean
+      )}&select=name,price_inr,is_discontinued,manufacturer_name,type,pack_size_label,short_composition1,short_composition2,batch_no,mfg_date,exp_date,nppa_ceiling_price&limit=1`,
+      { headers: restHeaders }
+    );
+
+    if (restRes.ok) {
+      const rows = await restRes.json();
+      if (Array.isArray(rows) && rows.length > 0) {
+        return {
+          status: rows[0].is_discontinued ? 'red' : 'green',
+          medicine: rows[0],
+          data: rows[0],
+        };
+      }
+      return {
+        status: 'yellow',
+        message: 'Batch number not found in verified records.',
+      };
+    }
+  } catch {
+    // Network failure
+  }
+
+  return {
+    status: 'yellow',
+    message: 'Unable to reach verification server.',
+  };
 }
 
 export async function searchMedicines(query: string) {
