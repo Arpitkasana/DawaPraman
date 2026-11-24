@@ -121,26 +121,14 @@ serve(async (req) => {
 
     const batch = batchRows?.[0];
     if (batch && batch.is_genuine !== false) {
-      let medRecord: Record<string, any> | null = null;
-      if (batch.medicine_id !== undefined && batch.medicine_id !== null) {
-        const { data: med } = await supabase
-          .from("medicines")
-          .select("*")
-          .eq("id", batch.medicine_id)
-          .maybeSingle();
-        medRecord = med;
-      }
-
       const serverTime = new Date().toISOString();
       const verificationToken = await signToken(verifySecretKey, rawCode, serverTime);
-      const medicineName =
-        medRecord?.brand_name ?? medRecord?.name ?? batch.medicine_name ?? "Verified Medicine";
 
       return new Response(
         JSON.stringify({
           status: "green",
-          medicineId: batch.medicine_id ?? medRecord?.id,
-          medicine: medicineName,
+          medicineId: batch.medicine_id,
+          medicine: batch.medicine_name ?? "Verified Medicine",
           mfg: batch.mfg_date,
           exp: batch.exp_date,
           secureMeta: {
