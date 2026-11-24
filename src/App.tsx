@@ -49,6 +49,7 @@ export default function App() {
   const [scanError, setScanError] = useState('');
   const [cameraActive, setCameraActive] = useState(false);
   const qrScannerRef = useRef<Html5Qrcode | null>(null);
+  const verifyingRef = useRef(false);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -92,7 +93,9 @@ export default function App() {
     setCameraActive(false);
     if (scanner) {
       try {
-        await scanner.stop();
+        if (scanner.isScanning) {
+          await scanner.stop();
+        }
       } catch {
         // Ignore if already stopped
       }
@@ -108,7 +111,7 @@ export default function App() {
     if (activeTab !== 'scan' && cameraActive) {
       stopCameraScanner();
     }
-  }, [activeTab]);
+  }, [activeTab, cameraActive]);
 
   useEffect(() => {
     return () => {
@@ -155,6 +158,8 @@ export default function App() {
 
   const handleVerify = async (e?: React.FormEvent, customBatch?: string) => {
     if (e) e.preventDefault();
+    if (verifyingRef.current) return;
+
     const targetBatch = (customBatch ?? batchNo).trim().toUpperCase();
     setScanError('');
     setScanResult(null);
@@ -168,10 +173,36 @@ export default function App() {
       return;
     }
 
+    verifyingRef.current = true;
     setScanLoading(true);
-    const res = await verifyMedicine(targetBatch);
-    setScanResult(res);
-    setScanLoading(false);
+    try {
+      const res = await verifyMedicine(targetBatch);
+      const parsedMrp = Number(mrpPaid);
+      const medObj = res?.medicine || res?.data;
+      const officialPrice = Number(
+        medObj?.price_inr ?? medObj?.nppa_ceiling_price ?? res?.price_inr
+      );
+      const overcharged =
+        !Number.isNaN(parsedMrp) &&
+        parsedMrp > 0 &&
+        !Number.isNaN(officialPrice) &&
+        officialPrice > 0 &&
+        parsedMrp > officialPrice;
+
+      setScanResult({
+        ...res,
+        mrpPaid: !Number.isNaN(parsedMrp) && parsedMrp > 0 ? parsedMrp : undefined,
+        overcharged,
+      });
+    } catch {
+      setScanResult({
+        status: 'yellow',
+        message: 'Unable to reach verification server.',
+      });
+    } finally {
+      setScanLoading(false);
+      verifyingRef.current = false;
+    }
   };
 
   const startCameraScanner = async () => {
@@ -180,8 +211,18 @@ export default function App() {
     await stopCameraScanner();
     setCameraActive(true);
 
-    // Wait one tick so the QR_READER_ELEMENT_ID container is visible in the DOM
     setTimeout(async () => {
+      const el = document.getElementById(QR_READER_ELEMENT_ID);
+      if (!el) {
+        setCameraActive(false);
+        setScanError(
+          lang === 'hi'
+            ? 'Scanner container taiyar nahi ho paya. Kripya dobara koshish karein.'
+            : 'Scanner container not ready. Please try again.'
+        );
+        return;
+      }
+
       try {
         const scanner = new Html5Qrcode(QR_READER_ELEMENT_ID);
         qrScannerRef.current = scanner;
@@ -207,7 +248,7 @@ export default function App() {
             : 'Unable to access camera. Allow camera permission or enter the Batch Number manually below.'
         );
       }
-    }, 50);
+    }, 80);
   };
 
   const handleSelectMedicineForVerify = async (med: any) => {
@@ -348,11 +389,18 @@ export default function App() {
     setWaInput('');
 
     const res = await verifyMedicine(code);
-    let reply = 'Verify Nahi Ho Payi (Server offline ya batch nahi mila).';
+    const medObj = typeof res?.medicine === 'object' ? res.medicine : res?.data;
+    const medName =
+      (typeof res?.medicine === 'string' && res.medicine) ||
+      medObj?.name ||
+      code;
+    const expDate = medObj?.exp_date || res?.exp || 'N/A';
+
+    let reply = res?.message || 'Verify Nahi Ho Payi (Server offline ya batch nahi mila).';
     if (res?.status === 'green') {
-      reply = `ASLI DAWAI: ${res.medicine} (Exp: ${res.exp})`;
+      reply = `ASLI DAWAI: ${medName} (Exp: ${expDate})`;
     } else if (res?.status === 'red') {
-      reply = `NAKLI / RECALLED: Is dawai ko mat lein! (${res.details || 'CDSCO Alert'})`;
+      reply = `NAKLI / RECALLED: Is dawai ko mat lein! (${res.details || res.message || 'CDSCO Alert'})`;
     }
 
     setWaMessages((prev) => [...prev, { from: 'bot', text: reply }]);
@@ -685,7 +733,14 @@ export default function App() {
 
             {/* Result Display */}
             {scanResult && scanResult.status === 'green' && (
-              <VerifiedCard data={scanResult} />
+              <div className="space-y-2">
+                <VerifiedCard data={scanResult} />
+                {scanResult.overcharged && (
+                  <div className="bg-amber-50 border border-amber-400 text-amber-900 rounded-xl p-3 text-xs font-medium">
+                    MRP Paid (₹{scanResult.mrpPaid}) record price se zyada hai. Chemist se bill/MRP check karein.
+                  </div>
+                )}
+              </div>
             )}
 
             {scanResult && scanResult.status === 'yellow' && (
