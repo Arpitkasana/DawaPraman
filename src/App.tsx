@@ -30,16 +30,197 @@ import { validators, sanitizeInput } from './lib/validation';
 import VerifiedCard from './components/VerifiedCard';
 
 type Tab = 'home' | 'scan' | 'search' | 'report';
+type Lang = 'hi' | 'en';
 
 const BANNED_DRUGS_PDF_URL = '/banneddrugs.pdf';
 const QR_READER_ELEMENT_ID = 'dawapraman-qr-reader';
 
+const TRANSLATIONS: Record<Lang, Record<string, string>> = {
+  hi: {
+    trustBar: '100% निःशुल्क | कोई विज्ञापन नहीं | आपका डेटा सुरक्षित है',
+    appTitle: 'दवाप्रमाण इंडिया',
+    appSubtitle: 'दवाई सुरक्षा',
+    heroTitle: 'अपनी दवाई स्कैन करें। असली है या नकली, 3 सेकंड में जानें।',
+    heroDesc: 'QR कोड स्कैन करें, बैच नंबर जांचें और सही कीमत देखें। बिल्कुल निःशुल्क।',
+    scanBtn: 'दवाई स्कैन करें - कैमरा / बैच',
+    searchBtn: 'दवाई खोजें',
+    statMedicines: 'दवाइयां',
+    statScans: 'स्कैन',
+    statFake: 'नकली पकड़ी गईं',
+    bannedPdfTitle: 'प्रतिबंधित दवाओं की सूची (PDF)',
+    bannedPdfDesc: 'आवश्यकता होने पर आधिकारिक PDF लोड करें',
+    loadPdf: 'PDF देखें',
+    hidePdf: 'PDF छिपाएं',
+    openPdfNewTab: 'नए टैब में PDF खोलें',
+    pdfFallbackNote:
+      'यदि PDF पूर्वावलोकन न खुले, तो ऊपर दिए गए बाहरी लिंक आइकन से नए टैब में खोलें।',
+    interactionTitle: 'दवा परस्पर प्रभाव जांचें (Drug Interaction)',
+    interactionFilterPlaceholder: 'दवा खोजें (जैसे Dolo, Crocin, Azithral)...',
+    checkInteractionBtn: 'इंटरैक्शन जांचें',
+    checkingBtn: 'जांच हो रही है...',
+    sameMedError: 'कृपया दो अलग-अलग दवाइयां या साल्ट चुनें।',
+    noMajorInteraction:
+      'कोई गंभीर इंटरैक्शन नहीं मिला: सामान्यतः सुरक्षित है, लेकिन डॉक्टर की सलाह आवश्यक है।',
+    privacyNote:
+      'आपकी गोपनीयता के लिए इतिहास सहेजा नहीं जाता है। यह केवल जानकारी के लिए है, दवा डॉक्टर की सलाह से ही लें।',
+    qrFrameLabel: 'CDSCO QR फ़्रेम',
+    cameraPrompt: 'दवाई के पत्ते का QR कोड फ़्रेम के अंदर रखें...',
+    stopCamera: 'कैमरा बंद करें',
+    scanQrCamera: 'कैमरे से QR स्कैन करें',
+    testBatchBtn: 'टेस्ट (DOLO2026A)',
+    cameraError:
+      'कैमरा एक्सेस नहीं मिल सका। ब्राउज़र अनुमति दें या नीचे बैच नंबर मैन्युअल रूप से दर्ज करें।',
+    scannerNotReady: 'स्कैनर तैयार नहीं हो सका। कृपया पुनः प्रयास करें।',
+    invalidBatchError:
+      'सही बैच नंबर दर्ज करें (4-20 अक्षर/अंक, जैसे DOLO2026A)',
+    manualVerifyTitle: 'मैन्युअल बैच सत्यापन',
+    batchNoLabel: 'बैच नंबर',
+    batchPlaceholder: 'जैसे DOLO2026A',
+    mrpLabel: 'भुगतान की गई MRP (₹) - वैकल्पिक',
+    mrpPlaceholder: 'जैसे 35',
+    verifyBtn: 'दवाई सत्यापित करें',
+    verifyingBtn: 'सर्वर से सत्यापित हो रहा है...',
+    verifyFailedTitle: 'सत्यापन नहीं हो सका',
+    verifyFailedDefault: 'बैच रिकॉर्ड में नहीं मिला या सर्वर ऑफ़लाइन है।',
+    serverUnreachable: 'सत्यापन सर्वर से संपर्क नहीं हो पा रहा है।',
+    recalledTitle: 'संदिग्ध / वापस मंगाई गई! यह दवा न लें',
+    reportNowBtn: 'अभी CDSCO को रिपोर्ट करें',
+    overchargedWarning:
+      'भुगतान की गई MRP (₹{mrp}) दर्ज कीमत से अधिक है। केमिस्ट से बिल और MRP जांचें।',
+    searchPlaceholder: 'दवाई खोजें (कम से कम 3 अक्षर)...',
+    searchingText: 'सुरक्षित डेटाबेस में खोजा जा रहा है...',
+    searchEmptyHint:
+      'कम से कम 3 अक्षर लिखें (जैसे Dolo, Crocin, Azithral) और दवाई खोजें।',
+    noBatchOnRecord:
+      '{name} का बैच नंबर रिकॉर्ड में उपलब्ध नहीं है — कृपया पत्ते से मैन्युअल रूप से दर्ज करें।',
+    verifyBatchBtn: 'बैच जांचें',
+    reportTitle: 'नकली दवाई की रिपोर्ट करें',
+    reportDesc: 'नकली या संदिग्ध दवाई की शिकायत सीधे CDSCO को भेजें।',
+    chemistLabel: 'केमिस्ट / मेडिकल स्टोर का नाम',
+    chemistPlaceholder: 'जैसे Apollo Pharmacy',
+    cityLabel: 'शहर',
+    cityPlaceholder: 'जैसे Noida',
+    reportBatchPlaceholder: 'जैसे FAKE2026X',
+    chemistError: 'केमिस्ट का नाम सही नहीं है (2-100 अक्षर)।',
+    cityError: 'शहर का नाम सही नहीं है (केवल अक्षर दर्ज करें)।',
+    reportBatchError: 'बैच नंबर सही नहीं है (जैसे BATCH123)।',
+    reportSuccess: 'रिपोर्ट CDSCO को भेज दी गई है। ट्रैकिंग ID: {id}',
+    submitReportBtn: 'CDSCO को रिपोर्ट भेजें',
+    waFloatingBtn: 'WhatsApp पर सत्यापित करें',
+    waHeader: 'दवाप्रमाण WhatsApp बॉट',
+    waWelcome:
+      'नमस्ते! अपनी दवाई का बैच नंबर भेजें (जैसे DOLO2026A) सत्यापित करने के लिए।',
+    waInputPlaceholder: 'बैच नंबर लिखें...',
+    waGenuine: 'असली दवाई: {name} (समाप्ति: {exp})',
+    waRecalled: 'नकली / वापस मंगाई गई: यह दवा न लें! ({details})',
+    navHome: 'होम',
+    navScan: 'स्कैन',
+    navSearch: 'खोजें',
+    navReport: 'रिपोर्ट',
+  },
+  en: {
+    trustBar: '100% Free | No Pharma Ads | Your Data Is Not Sold',
+    appTitle: 'DawaPraman India',
+    appSubtitle: 'DawAI Suraksha',
+    heroTitle: 'Scan Your Medicine. Know if it is Genuine or Fake in 3 Seconds.',
+    heroDesc:
+      'Scan QR code, verify batch number, check fair NPPA prices. 100% Free.',
+    scanBtn: 'Scan Medicine - Camera / Batch',
+    searchBtn: 'Search Medicine',
+    statMedicines: 'Medicines',
+    statScans: 'Scans',
+    statFake: 'Fake Caught',
+    bannedPdfTitle: 'Banned Drugs List (PDF)',
+    bannedPdfDesc: 'Load official PDF document on demand',
+    loadPdf: 'Load PDF',
+    hidePdf: 'Hide PDF',
+    openPdfNewTab: 'Open PDF in new tab',
+    pdfFallbackNote:
+      'If the PDF preview does not load, open it in a new tab using the external link icon above.',
+    interactionTitle: 'Drug Interaction Checker',
+    interactionFilterPlaceholder:
+      'Filter database medicines (e.g. Dolo, Crocin, Azithral)...',
+    checkInteractionBtn: 'Check Interaction',
+    checkingBtn: 'Checking...',
+    sameMedError: 'Please select two different medicines or salts.',
+    noMajorInteraction:
+      'No Major Interaction Found: Generally safe, but always consult your doctor.',
+    privacyNote:
+      'History is not saved for your privacy. This is for informational purposes only; always consult a doctor before taking medicine.',
+    qrFrameLabel: 'CDSCO QR Frame',
+    cameraPrompt: 'Point camera at the QR code on the medicine strip...',
+    stopCamera: 'Stop Camera',
+    scanQrCamera: 'Scan QR with Camera',
+    testBatchBtn: 'Test (DOLO2026A)',
+    cameraError:
+      'Unable to access camera. Allow camera permission or enter the Batch Number manually below.',
+    scannerNotReady: 'Scanner container not ready. Please try again.',
+    invalidBatchError:
+      'Enter a valid Batch Number (4-20 alphanumeric characters)',
+    manualVerifyTitle: 'Manual Batch Verification',
+    batchNoLabel: 'Batch Number',
+    batchPlaceholder: 'e.g. DOLO2026A',
+    mrpLabel: 'MRP Paid (₹) - Optional',
+    mrpPlaceholder: 'e.g. 35',
+    verifyBtn: 'Verify Medicine',
+    verifyingBtn: 'Verifying with Server...',
+    verifyFailedTitle: 'Verification Incomplete',
+    verifyFailedDefault: 'Batch not found in records or server is offline.',
+    serverUnreachable: 'Unable to reach verification server.',
+    recalledTitle: 'Suspicious / Recalled! Do not take this medicine',
+    reportNowBtn: 'Report to CDSCO Now',
+    overchargedWarning:
+      'MRP Paid (₹{mrp}) is higher than the recorded price. Check the bill and MRP with the chemist.',
+    searchPlaceholder: 'Search medicine (min 3 chars)...',
+    searchingText: 'Searching secure database...',
+    searchEmptyHint:
+      'Type at least 3 letters (e.g. Dolo, Crocin, Azithral) to search via Supabase Edge Function.',
+    noBatchOnRecord:
+      'No batch number on record for {name} — enter it manually from the strip.',
+    verifyBatchBtn: 'Verify Batch',
+    reportTitle: 'Report Fake Medicine',
+    reportDesc: 'Submit a report about a fake or suspicious medicine to CDSCO.',
+    chemistLabel: 'Chemist / Medical Store Name',
+    chemistPlaceholder: 'e.g. Apollo Pharmacy',
+    cityLabel: 'City',
+    cityPlaceholder: 'e.g. Noida',
+    reportBatchPlaceholder: 'e.g. FAKE2026X',
+    chemistError: 'Chemist name is invalid (2-100 characters).',
+    cityError: 'City name is invalid (letters only).',
+    reportBatchError: 'Batch number is invalid (e.g. BATCH123).',
+    reportSuccess: 'Report submitted to CDSCO. Tracking ID: {id}',
+    submitReportBtn: 'Submit Report to CDSCO',
+    waFloatingBtn: 'Verify on WhatsApp',
+    waHeader: 'DawaPraman WhatsApp Bot',
+    waWelcome:
+      'Hello! Send your medicine Batch Number (e.g. DOLO2026A) to verify it.',
+    waInputPlaceholder: 'Type Batch No...',
+    waGenuine: 'GENUINE MEDICINE: {name} (Exp: {exp})',
+    waRecalled: 'FAKE / RECALLED: Do not take this medicine! ({details})',
+    navHome: 'Home',
+    navScan: 'Scan',
+    navSearch: 'Search',
+    navReport: 'Report',
+  },
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home');
-  const [lang, setLang] = useState<'hi' | 'en'>(
-    () => (sessionStorage.getItem('lang') as 'hi' | 'en') || 'hi'
-  );
+  const [lang, setLang] = useState<Lang>(() => {
+    const saved = sessionStorage.getItem('lang');
+    return saved === 'en' || saved === 'hi' ? saved : 'hi';
+  });
   const [showBannedPdf, setShowBannedPdf] = useState(false);
+
+  const t = (key: string, vars?: Record<string, string | number>) => {
+    let str = TRANSLATIONS[lang][key] ?? TRANSLATIONS.en[key] ?? key;
+    if (vars) {
+      Object.entries(vars).forEach(([k, v]) => {
+        str = str.replace(`{${k}}`, String(v));
+      });
+    }
+    return str;
+  };
 
   // Scan & Camera QR state
   const [batchNo, setBatchNo] = useState('');
@@ -131,15 +312,10 @@ export default function App() {
   const [waInput, setWaInput] = useState('');
   const [waMessages, setWaMessages] = useState<
     { from: 'bot' | 'user'; text: string }[]
-  >([
-    {
-      from: 'bot',
-      text: 'Namaste! Apni dawai ka Batch Number bhejein (e.g. DOLO2026A) verify karne ke liye.',
-    },
-  ]);
+  >(() => [{ from: 'bot', text: TRANSLATIONS.hi.waWelcome }]);
 
   const toggleLang = () => {
-    const next = lang === 'hi' ? 'en' : 'hi';
+    const next: Lang = lang === 'hi' ? 'en' : 'hi';
     setLang(next);
     sessionStorage.setItem('lang', next);
   };
@@ -165,11 +341,7 @@ export default function App() {
     setScanResult(null);
 
     if (!validators.batchNo(targetBatch)) {
-      setScanError(
-        lang === 'hi'
-          ? 'Sahi Batch Number daalein (4-20 letters/numbers, e.g. DOLO2026A)'
-          : 'Enter a valid Batch Number (4-20 alphanumeric characters)'
-      );
+      setScanError(t('invalidBatchError'));
       return;
     }
 
@@ -197,7 +369,7 @@ export default function App() {
     } catch {
       setScanResult({
         status: 'yellow',
-        message: 'Unable to reach verification server.',
+        message: t('serverUnreachable'),
       });
     } finally {
       setScanLoading(false);
@@ -215,11 +387,7 @@ export default function App() {
       const el = document.getElementById(QR_READER_ELEMENT_ID);
       if (!el) {
         setCameraActive(false);
-        setScanError(
-          lang === 'hi'
-            ? 'Scanner container taiyar nahi ho paya. Kripya dobara koshish karein.'
-            : 'Scanner container not ready. Please try again.'
-        );
+        setScanError(t('scannerNotReady'));
         return;
       }
 
@@ -242,11 +410,7 @@ export default function App() {
         );
       } catch {
         await stopCameraScanner();
-        setScanError(
-          lang === 'hi'
-            ? 'Camera access nahi mil paya. Browser permission allow karein ya neeche Batch Number manually daalein.'
-            : 'Unable to access camera. Allow camera permission or enter the Batch Number manually below.'
-        );
+        setScanError(t('cameraError'));
       }
     }, 80);
   };
@@ -259,9 +423,9 @@ export default function App() {
       setBatchNo('');
       setScanResult(null);
       setScanError(
-        lang === 'hi'
-          ? `${med?.name || 'Is dawai'} ka Batch Number record me nahi hai — packet se manually daalein.`
-          : `No batch number on record for ${med?.name || 'this medicine'} — enter it manually from the strip.`
+        t('noBatchOnRecord', {
+          name: med?.name || (lang === 'hi' ? 'इस दवा' : 'this medicine'),
+        })
       );
       return;
     }
@@ -309,10 +473,7 @@ export default function App() {
     if (a.toLowerCase() === b.toLowerCase()) {
       setInteractionResult({
         safe: false,
-        text:
-          lang === 'hi'
-            ? 'Kripya do alag-alag dawaiyan ya salt chunein.'
-            : 'Please select two different medicines or salts.',
+        text: t('sameMedError'),
       });
       return;
     }
@@ -336,19 +497,13 @@ export default function App() {
       } else {
         setInteractionResult({
           safe: true,
-          text:
-            lang === 'hi'
-              ? 'No Major Interaction Found: Aam taur par surakshit hai, par doctor ki salah zaroori hai.'
-              : 'No Major Interaction Found: Generally safe, but always consult your doctor.',
+          text: t('noMajorInteraction'),
         });
       }
     } catch {
       setInteractionResult({
         safe: true,
-        text:
-          lang === 'hi'
-            ? 'No Major Interaction Found: Aam taur par surakshit hai, par doctor ki salah zaroori hai.'
-            : 'No Major Interaction Found: Generally safe, but always consult your doctor.',
+        text: t('noMajorInteraction'),
       });
     } finally {
       setInteractionLoading(false);
@@ -361,20 +516,20 @@ export default function App() {
     setReportSuccess('');
 
     if (!validators.chemistName(chemistName)) {
-      setReportError('Chemist name invalid hai (2-100 characters).');
+      setReportError(t('chemistError'));
       return;
     }
     if (!validators.city(city)) {
-      setReportError('City name invalid hai (sirf letters).');
+      setReportError(t('cityError'));
       return;
     }
     if (!validators.batchNo(reportBatch.toUpperCase())) {
-      setReportError('Batch number invalid hai (e.g. BATCH123).');
+      setReportError(t('reportBatchError'));
       return;
     }
 
     const trackingId = `MED-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-    setReportSuccess(`Report CDSCO ko bhej di gayi. Tracking ID: ${trackingId}`);
+    setReportSuccess(t('reportSuccess', { id: trackingId }));
     setChemistName('');
     setCity('');
     setReportBatch('');
@@ -396,11 +551,13 @@ export default function App() {
       code;
     const expDate = medObj?.exp_date || res?.exp || 'N/A';
 
-    let reply = res?.message || 'Verify Nahi Ho Payi (Server offline ya batch nahi mila).';
+    let reply = res?.message || t('verifyFailedDefault');
     if (res?.status === 'green') {
-      reply = `ASLI DAWAI: ${medName} (Exp: ${expDate})`;
+      reply = t('waGenuine', { name: medName, exp: expDate });
     } else if (res?.status === 'red') {
-      reply = `NAKLI / RECALLED: Is dawai ko mat lein! (${res.details || res.message || 'CDSCO Alert'})`;
+      reply = t('waRecalled', {
+        details: res.details || res.message || 'CDSCO Alert',
+      });
     }
 
     setWaMessages((prev) => [...prev, { from: 'bot', text: reply }]);
@@ -410,7 +567,7 @@ export default function App() {
     <div className="flex flex-col min-h-screen sm:min-h-[844px] bg-slate-50 text-slate-900 relative pb-20">
       {/* Top Trust Bar */}
       <div className="bg-emerald-700 text-white text-[11px] font-medium py-1.5 px-3 text-center tracking-wide">
-        100% Free | No Pharma Ads | Aapka Data Nahi Becha Jayega
+        {t('trustBar')}
       </div>
 
       {/* Header */}
@@ -421,14 +578,15 @@ export default function App() {
           </div>
           <div>
             <h1 className="font-extrabold text-base leading-tight text-slate-900">
-              DawaPraman India
+              {t('appTitle')}
             </h1>
             <p className="text-[11px] font-semibold text-emerald-600">
-              DawAI Suraksha
+              {t('appSubtitle')}
             </p>
           </div>
         </div>
         <button
+          type="button"
           onClick={toggleLang}
           className="flex items-center gap-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-full transition"
         >
@@ -444,18 +602,15 @@ export default function App() {
           <>
             <section className="bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-2xl p-5 text-white shadow-md">
               <h2 className="text-xl font-extrabold leading-snug">
-                {lang === 'hi'
-                  ? 'Apni Dawai Scan Karo. Asli Hai Ya Nakli, 3 Second Me Jano.'
-                  : 'Scan Your Medicine. Know if it is Genuine or Fake in 3 Seconds.'}
+                {t('heroTitle')}
               </h2>
               <p className="text-emerald-100 text-xs mt-2 leading-relaxed">
-                {lang === 'hi'
-                  ? 'QR Code scan karo, batch verify karo, sahi daam pata karo. Bilkul Free.'
-                  : 'Scan QR code, verify batch number, check fair NPPA prices. 100% Free.'}
+                {t('heroDesc')}
               </p>
 
               <div className="grid grid-cols-1 gap-2.5 mt-4">
                 <button
+                  type="button"
                   onClick={() => {
                     setActiveTab('scan');
                     startCameraScanner();
@@ -463,14 +618,15 @@ export default function App() {
                   className="w-full bg-white text-emerald-700 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow hover:bg-emerald-50 transition"
                 >
                   <Camera className="w-5 h-5" />
-                  Scan Dawai - Camera / Batch
+                  {t('scanBtn')}
                 </button>
                 <button
+                  type="button"
                   onClick={() => setActiveTab('search')}
                   className="w-full bg-emerald-900/40 border border-emerald-400/40 text-white font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-900/60 transition text-sm"
                 >
                   <Search className="w-4 h-4" />
-                  Dawai Search Karein
+                  {t('searchBtn')}
                 </button>
               </div>
             </section>
@@ -479,15 +635,21 @@ export default function App() {
             <section className="grid grid-cols-3 gap-2 text-center">
               <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
                 <div className="text-base font-extrabold text-emerald-600">5,000+</div>
-                <div className="text-[10px] text-slate-500 font-medium">Medicines</div>
+                <div className="text-[10px] text-slate-500 font-medium">
+                  {t('statMedicines')}
+                </div>
               </div>
               <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
                 <div className="text-base font-extrabold text-emerald-600">1.2L+</div>
-                <div className="text-[10px] text-slate-500 font-medium">Scans</div>
+                <div className="text-[10px] text-slate-500 font-medium">
+                  {t('statScans')}
+                </div>
               </div>
               <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
                 <div className="text-base font-extrabold text-red-600">850+</div>
-                <div className="text-[10px] text-slate-500 font-medium">Fake Caught</div>
+                <div className="text-[10px] text-slate-500 font-medium">
+                  {t('statFake')}
+                </div>
               </div>
             </section>
 
@@ -498,12 +660,10 @@ export default function App() {
                   <FileText className="w-5 h-5 text-red-600 shrink-0" />
                   <div>
                     <h3 className="font-bold text-sm text-slate-800">
-                      Banned Drugs List (PDF)
+                      {t('bannedPdfTitle')}
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      {lang === 'hi'
-                        ? 'Zaroorat padne par PDF load karein'
-                        : 'Load official PDF document on demand'}
+                      {t('bannedPdfDesc')}
                     </p>
                   </div>
                 </div>
@@ -513,13 +673,13 @@ export default function App() {
                     onClick={() => setShowBannedPdf((prev) => !prev)}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition"
                   >
-                    {showBannedPdf ? 'Hide PDF' : 'Load PDF'}
+                    {showBannedPdf ? t('hidePdf') : t('loadPdf')}
                   </button>
                   <a
                     href={BANNED_DRUGS_PDF_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    title="Open PDF in new tab"
+                    title={t('openPdfNewTab')}
                     className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-lg transition"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
@@ -531,11 +691,11 @@ export default function App() {
                 <div className="space-y-2 pt-1">
                   <iframe
                     src={BANNED_DRUGS_PDF_URL}
-                    title="Banned Drugs PDF"
+                    title={t('bannedPdfTitle')}
                     className="w-full h-80 rounded-xl border border-slate-200"
                   />
                   <p className="text-[11px] text-slate-500">
-                    Agar PDF preview na khule to upar external link icon se new tab me open karein.
+                    {t('pdfFallbackNote')}
                   </p>
                 </div>
               )}
@@ -546,7 +706,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <Activity className="w-5 h-5 text-emerald-600" />
                 <h3 className="font-bold text-sm text-slate-800">
-                  Drug Interaction Checker
+                  {t('interactionTitle')}
                 </h3>
               </div>
 
@@ -554,7 +714,7 @@ export default function App() {
                 type="text"
                 value={interactionFilter}
                 onChange={(e) => setInteractionFilter(e.target.value)}
-                placeholder="Filter database medicines (e.g. Dolo, Crocin, Azithral)..."
+                placeholder={t('interactionFilterPlaceholder')}
                 className="w-full text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
 
@@ -600,7 +760,7 @@ export default function App() {
                 onClick={handleInteractionCheck}
                 className="w-full bg-slate-900 text-white text-xs font-bold py-2.5 rounded-lg hover:bg-slate-800 transition disabled:opacity-50"
               >
-                {interactionLoading ? 'Checking...' : 'Check Interaction'}
+                {interactionLoading ? t('checkingBtn') : t('checkInteractionBtn')}
               </button>
               {interactionResult && (
                 <div
@@ -628,9 +788,7 @@ export default function App() {
             {/* Privacy Note */}
             <div className="bg-slate-100 rounded-xl p-3 text-[11px] text-slate-500 flex items-center gap-2">
               <Info className="w-4 h-4 shrink-0 text-slate-400" />
-              <span>
-                History is not saved for your privacy. Ye jankari ke liye hai, dawa doctor ki salah se hi lein.
-              </span>
+              <span>{t('privacyNote')}</span>
             </div>
           </>
         )}
@@ -646,9 +804,7 @@ export default function App() {
                     className="w-full max-w-[260px] mx-auto rounded-xl overflow-hidden border-2 border-emerald-400 bg-black"
                   />
                   <p className="text-[11px] text-emerald-200">
-                    {lang === 'hi'
-                      ? 'Dawai ke packet ka QR code frame ke andar rakhein...'
-                      : 'Point camera at the QR code on the medicine strip...'}
+                    {t('cameraPrompt')}
                   </p>
                   <button
                     type="button"
@@ -656,7 +812,7 @@ export default function App() {
                     className="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-2 px-4 rounded-lg transition"
                   >
                     <CameraOff className="w-4 h-4" />
-                    {lang === 'hi' ? 'Camera Band Karein' : 'Stop Camera'}
+                    {t('stopCamera')}
                   </button>
                 </div>
               ) : (
@@ -664,7 +820,7 @@ export default function App() {
                   <div className="w-40 h-40 mx-auto border-2 border-emerald-400 rounded-xl flex flex-col items-center justify-center bg-slate-800/60">
                     <QrCode className="w-12 h-12 text-emerald-400 mb-2" />
                     <span className="text-[11px] text-slate-300">
-                      CDSCO QR Frame
+                      {t('qrFrameLabel')}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
@@ -674,14 +830,14 @@ export default function App() {
                       className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 px-4 rounded-lg transition"
                     >
                       <Camera className="w-4 h-4" />
-                      {lang === 'hi' ? 'Camera QR Scan Karein' : 'Scan QR with Camera'}
+                      {t('scanQrCamera')}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleVerify(undefined, 'DOLO2026A')}
                       className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold py-2.5 px-3 rounded-lg transition"
                     >
-                      Test (DOLO2026A)
+                      {t('testBatchBtn')}
                     </button>
                   </div>
                 </>
@@ -693,29 +849,29 @@ export default function App() {
               className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3"
             >
               <h3 className="font-bold text-sm text-slate-800">
-                Manual Batch Verification
+                {t('manualVerifyTitle')}
               </h3>
               <div>
                 <label className="text-xs font-semibold text-slate-600 block mb-1">
-                  Batch Number
+                  {t('batchNoLabel')}
                 </label>
                 <input
                   type="text"
                   value={batchNo}
                   onChange={(e) => setBatchNo(e.target.value)}
-                  placeholder="e.g. DOLO2026A"
+                  placeholder={t('batchPlaceholder')}
                   className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-600 block mb-1">
-                  MRP Paid (₹) - Optional
+                  {t('mrpLabel')}
                 </label>
                 <input
                   type="number"
                   value={mrpPaid}
                   onChange={(e) => setMrpPaid(e.target.value)}
-                  placeholder="e.g. 35"
+                  placeholder={t('mrpPlaceholder')}
                   className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
@@ -727,7 +883,7 @@ export default function App() {
                 disabled={scanLoading}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition disabled:opacity-50"
               >
-                {scanLoading ? 'Verifying with Server...' : 'Verify Medicine'}
+                {scanLoading ? t('verifyingBtn') : t('verifyBtn')}
               </button>
             </form>
 
@@ -737,7 +893,7 @@ export default function App() {
                 <VerifiedCard data={scanResult} />
                 {scanResult.overcharged && (
                   <div className="bg-amber-50 border border-amber-400 text-amber-900 rounded-xl p-3 text-xs font-medium">
-                    MRP Paid (₹{scanResult.mrpPaid}) record price se zyada hai. Chemist se bill/MRP check karein.
+                    {t('overchargedWarning', { mrp: scanResult.mrpPaid })}
                   </div>
                 )}
               </div>
@@ -747,10 +903,10 @@ export default function App() {
               <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 space-y-2">
                 <div className="flex items-center gap-2 text-amber-800 font-bold">
                   <AlertTriangle className="w-6 h-6 text-amber-500" />
-                  <span>Verify Nahi Ho Payi</span>
+                  <span>{t('verifyFailedTitle')}</span>
                 </div>
                 <p className="text-xs text-amber-900">
-                  {scanResult.message || 'Batch records me nahi mila ya server offline hai.'}
+                  {scanResult.message || t('verifyFailedDefault')}
                 </p>
               </div>
             )}
@@ -759,14 +915,17 @@ export default function App() {
               <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 space-y-3">
                 <div className="flex items-center gap-2 text-red-800 font-bold">
                   <XCircle className="w-6 h-6 text-red-600" />
-                  <span>Suspicious / Recalled! Is dawai ko mat lein</span>
+                  <span>{t('recalledTitle')}</span>
                 </div>
-                <p className="text-xs text-red-900">{scanResult.details || scanResult.message}</p>
+                <p className="text-xs text-red-900">
+                  {scanResult.details || scanResult.message}
+                </p>
                 <button
+                  type="button"
                   onClick={() => setActiveTab('report')}
                   className="w-full bg-red-600 text-white text-xs font-bold py-2.5 rounded-lg"
                 >
-                  Report to CDSCO Now
+                  {t('reportNowBtn')}
                 </button>
               </div>
             )}
@@ -781,7 +940,7 @@ export default function App() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search medicine (min 3 chars)..."
+                placeholder={t('searchPlaceholder')}
                 className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
               <button
@@ -794,16 +953,14 @@ export default function App() {
 
             {searchLoading && (
               <p className="text-xs text-slate-500 text-center py-4">
-                Searching secure database...
+                {t('searchingText')}
               </p>
             )}
 
             {!searchLoading && searchResults.length === 0 && (
               <div className="bg-white rounded-2xl p-6 text-center border border-slate-200">
                 <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                <p className="text-xs text-slate-500">
-                  Type at least 3 letters (e.g. Dolo, Crocin, Azithral) to search via Supabase Edge Function.
-                </p>
+                <p className="text-xs text-slate-500">{t('searchEmptyHint')}</p>
               </div>
             )}
 
@@ -836,7 +993,7 @@ export default function App() {
                     </div>
                     {med.batch_no && (
                       <div className="mt-1.5 inline-block text-[10px] font-mono font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded">
-                        Batch: {med.batch_no}
+                        {t('batchNoLabel')}: {med.batch_no}
                       </div>
                     )}
                   </div>
@@ -849,7 +1006,7 @@ export default function App() {
                     }}
                     className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition"
                   >
-                    {lang === 'hi' ? 'Batch Verify' : 'Verify Batch'}
+                    {t('verifyBatchBtn')}
                   </button>
                 </div>
               ))}
@@ -865,47 +1022,45 @@ export default function App() {
           >
             <div className="flex items-center gap-2 text-red-600">
               <FileWarning className="w-5 h-5" />
-              <h3 className="font-bold text-base">Report Fake Medicine</h3>
+              <h3 className="font-bold text-base">{t('reportTitle')}</h3>
             </div>
-            <p className="text-xs text-slate-500">
-              Nakli dawai ki shikayat seedha CDSCO ko bhejein.
-            </p>
+            <p className="text-xs text-slate-500">{t('reportDesc')}</p>
 
             <div>
               <label className="text-xs font-semibold text-slate-600 block mb-1">
-                Chemist / Medical Store Name
+                {t('chemistLabel')}
               </label>
               <input
                 type="text"
                 value={chemistName}
                 onChange={(e) => setChemistName(e.target.value)}
-                placeholder="e.g. Apollo Pharmacy"
+                placeholder={t('chemistPlaceholder')}
                 className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
               />
             </div>
 
             <div>
               <label className="text-xs font-semibold text-slate-600 block mb-1">
-                City
+                {t('cityLabel')}
               </label>
               <input
                 type="text"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                placeholder="e.g. Noida"
+                placeholder={t('cityPlaceholder')}
                 className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm"
               />
             </div>
 
             <div>
               <label className="text-xs font-semibold text-slate-600 block mb-1">
-                Batch Number
+                {t('batchNoLabel')}
               </label>
               <input
                 type="text"
                 value={reportBatch}
                 onChange={(e) => setReportBatch(e.target.value)}
-                placeholder="e.g. FAKE2026X"
+                placeholder={t('reportBatchPlaceholder')}
                 className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm uppercase"
               />
             </div>
@@ -923,7 +1078,7 @@ export default function App() {
               type="submit"
               className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition"
             >
-              Submit Report to CDSCO
+              {t('submitReportBtn')}
             </button>
           </form>
         )}
@@ -931,11 +1086,12 @@ export default function App() {
 
       {/* Floating WhatsApp Button */}
       <button
+        type="button"
         onClick={() => setWaOpen(true)}
         className="fixed sm:absolute bottom-20 right-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2.5 rounded-full shadow-lg flex items-center gap-1.5 z-30"
       >
         <MessageCircle className="w-4 h-4" />
-        WhatsApp par Verify Karein
+        {t('waFloatingBtn')}
       </button>
 
       {/* WhatsApp Chat Modal */}
@@ -943,8 +1099,8 @@ export default function App() {
         <div className="fixed sm:absolute inset-0 bg-black/50 z-40 flex items-end justify-center p-3">
           <div className="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[75%]">
             <div className="bg-emerald-700 text-white p-3 flex items-center justify-between">
-              <div className="font-bold text-sm">DawaPraman WhatsApp Bot</div>
-              <button onClick={() => setWaOpen(false)}>
+              <div className="font-bold text-sm">{t('waHeader')}</div>
+              <button type="button" onClick={() => setWaOpen(false)}>
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -967,7 +1123,7 @@ export default function App() {
                 type="text"
                 value={waInput}
                 onChange={(e) => setWaInput(e.target.value)}
-                placeholder="Type Batch No..."
+                placeholder={t('waInputPlaceholder')}
                 className="flex-1 text-xs border border-slate-300 rounded-lg px-3 py-2"
               />
               <button
@@ -984,16 +1140,17 @@ export default function App() {
       {/* Sticky Bottom Navigation */}
       <nav className="fixed sm:absolute bottom-0 left-0 right-0 max-w-[430px] mx-auto bg-white border-t border-slate-200 grid grid-cols-4 py-2 px-1 z-30">
         {[
-          { id: 'home', label: 'Home', icon: Home },
-          { id: 'scan', label: 'Scan', icon: QrCode },
-          { id: 'search', label: 'Search', icon: Search },
-          { id: 'report', label: 'Report', icon: AlertTriangle },
+          { id: 'home', label: t('navHome'), icon: Home },
+          { id: 'scan', label: t('navScan'), icon: QrCode },
+          { id: 'search', label: t('navSearch'), icon: Search },
+          { id: 'report', label: t('navReport'), icon: AlertTriangle },
         ].map((item) => {
           const Icon = item.icon;
           const active = activeTab === item.id;
           return (
             <button
               key={item.id}
+              type="button"
               onClick={() => setActiveTab(item.id as Tab)}
               className={`flex flex-col items-center gap-0.5 py-1 rounded-lg transition ${
                 active ? 'text-emerald-600 font-bold' : 'text-slate-400'
